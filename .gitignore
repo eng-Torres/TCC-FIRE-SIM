@@ -1,0 +1,14 @@
+# Ignorar as pastas de ambiente virtual (caso crie alguma localmente)
+env/
+venv/
+.conda/
+
+# Ignorar arquivos temporários do Python e do Jupyter
+__pycache__/
+.ipynb_checkpoints/
+
+# Ignorar a pasta onde você vai salvar as simulações pesadas
+dados/
+*.csv
+*.png
+*.mp4
