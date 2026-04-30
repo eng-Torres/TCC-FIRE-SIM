@@ -46,10 +46,13 @@ def calcular_fluxo_porta_duas_zonas(
         'm_dot_in': vazão mássica de ar frio entrando [kg/s]
         'm_dot_out': vazão mássica de fumaça saindo [kg/s]
     """
+    # Se o solver testar uma densidade maior ou igual à do ar, não há empuxo térmico
     if densidade_fumaca >= densidade_ar:
-        raise ValueError("Densidade da fumaça deve ser menor que a do ar.")
+         return {"z_n": altura_porta / 2.0, "m_dot_in": 0.0, "m_dot_out": 0.0}
+    
+    # Trava matemática suave para manter a interface dentro dos limites da porta
     if not (0 <= altura_interface <= altura_porta):
-        raise ValueError("altura_interface deve estar entre 0 e altura_porta.")
+        altura_interface = max(0.0, min(altura_porta, altura_interface))
 
     g = 9.81
     W = largura

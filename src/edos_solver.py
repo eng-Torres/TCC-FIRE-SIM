@@ -5,8 +5,8 @@ Inclui modelo não-adiabático e escoamento bidirecional.
 """
 import numpy as np
 from scipy.integrate import solve_ivp
-from tcc.src.fluidodinamica import calcular_fluxo_porta_duas_zonas
-from tcc.src.combustão import calcular_hrr
+from src.fluidodinamica import calcular_fluxo_porta_duas_zonas
+from src.combustão import calcular_hrr
 
 # Constantes Termodinâmicas
 C_P = 1.005      # Calor específico a pressão constante (kJ/kg.K)
@@ -50,7 +50,8 @@ def equacoes_sfpe(t, y, sala, aberturas, crescimento_fogo):
     # 4. Calcular Ventilação Bidirecional da Porta
     # A função calcular_fluxo_porta_duas_zonas deve retornar entrada, saída e plano neutro
     porta = aberturas[0]
-    m_dot_in, m_dot_out, Z_n = calcular_fluxo_porta_duas_zonas(
+    rho_u = P_ATM / (R_AR * T_u)
+    fluxos_porta = calcular_fluxo_porta_duas_zonas(
         largura=porta["dimensoes"]["x"],
         altura_porta=porta["dimensoes"]["z"],
         altura_interface=Z_int,
@@ -59,10 +60,13 @@ def equacoes_sfpe(t, y, sala, aberturas, crescimento_fogo):
         C_d=0.68,
         m_dot_combustivel=0.0                                                                  
     )
+    m_dot_in = fluxos_porta["m_dot_in"]
+    m_dot_out = fluxos_porta["m_dot_out"]
+    Z_n = fluxos_porta["z_n"]
 
     # 5. Calcular Perda de Calor para as Superfícies (Modelo Não-Adiabático)
-    L = sala["dimensoes"]["x"]
-    W = sala["dimensoes"]["y"]
+    L = sala["comprimento_x"]
+    W = sala["profundidade_y"]
     H_sala = sala["altura_z"]
     
     A_teto = L * W

@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 # Importações baseadas na sua arquitetura modular
 from src.geometria import carregar_geometria_padrao
-from src.dinamica_camadas import simular_incendio
+from src.edos_solver import simular_incendio
 
 def rodar_teste():
     print("Carregando cenário padrão...")
