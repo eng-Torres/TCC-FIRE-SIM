@@ -1,64 +1,94 @@
+"""
+Script principal para simulação e visualização do modelo de duas zonas.
+Agora com ignição sequencial de objetos (cama → guarda-roupa).
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
-
-# Importações baseadas na sua arquitetura modular
 from src.geometria import carregar_geometria_padrao
-from src.edos_solver import simular_incendio
+from src.edos_solver import simular_incendio_sequencial
 
 def rodar_teste():
     print("Carregando cenário padrão...")
     sala, objetos, aberturas = carregar_geometria_padrao()
-    
-    tempo_simulacao = 600 # 10 minutos
-    print(f"Iniciando simulação de {tempo_simulacao} segundos. Por favor, aguarde...")
-    
-    # Roda o motor matemático
-    solucao = simular_incendio(sala, aberturas, crescimento="medio", t_final=tempo_simulacao)
-    
-    if not solucao.success:
-        print("A simulação falhou:", solucao.message)
-        return
-        
-    print("Simulação concluída com sucesso! Processando resultados...")
-    
-    # Extrair os arrays de tempo e variáveis de estado
-    tempos = solucao.t
-    m_u = solucao.y[0]
-    H_u = solucao.y[1]
-    
-    # Constantes
+
+    # Identificar o objeto inicial (Cama de Casal) e os demais
+    # A cama é o objeto com tipo_material = 'espuma_poliuretano'
+    cama = next(obj for obj in objetos if obj["nome"] == "Cama de Casal")
+    guarda_roupa = next(obj for obj in objetos if obj["nome"] == "Guarda-Roupa")
+
+    objeto_inicial = {"nome_material": cama["tipo_material"]}
+    outros_materiais = [guarda_roupa["tipo_material"]]
+
+    print(f"Foco inicial: {cama['nome']} ({cama['tipo_material']})")
+    print(f"Objeto secundário: {guarda_roupa['nome']} ({guarda_roupa['tipo_material']})")
+
+    tempo_simulacao = 600  # 10 minutos
+    print(f"Iniciando simulação de {tempo_simulacao} segundos. Aguarde...")
+
+    t, y = simular_incendio_sequencial(
+        sala, aberturas,
+        objeto_inicial=objeto_inicial,
+        outros_objetos=outros_materiais,
+        t_final=tempo_simulacao,
+        crescimento_t2="medio"  # fallback se material não existir
+    )
+
+    print("Simulação concluída! Processando resultados...")
+
+    m_u   = y[0]
+    H_u   = y[1]
+    m_o2  = y[2]
+    m_co2 = y[3]
+    m_co  = y[4]
+
     C_P = 1.005
     R_AR = 0.287
     P_ATM = 101.325
-    
-    # Recalcular variáveis dependentes para o gráfico
+
     T_u = H_u / (m_u * C_P)
-    T_u_celsius = T_u - 273.15 # Conversão para Celsius para leitura intuitiva
-    
+    T_u_celsius = T_u - 273.15
     V_u = (m_u * R_AR * T_u) / P_ATM
     Z_int = sala["altura_z"] - (V_u / sala["area_piso"])
-    Z_int = np.maximum(Z_int, 0.0) # Clamping visual para não passar do chão
+    Z_int = np.maximum(Z_int, 0.0)
+
+    Y_o2  = m_o2  / m_u
+    Y_co2 = m_co2 / m_u
+    Y_co  = m_co  / m_u
     
-    # --- PLOTAGEM DOS RESULTADOS ---
+
+    # Gráficos
     plt.style.use('seaborn-v0_8-darkgrid')
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
-    
-    # Gráfico 1: Altura da Camada de Fumaça
-    ax1.plot(tempos, Z_int, color='black', linewidth=2, label='Interface da Fumaça ($Z_{int}$)')
-    ax1.axhline(y=sala["altura_z"], color='gray', linestyle='--', label='Teto')
-    ax1.axhline(y=aberturas[0]["dimensoes"]["z"], color='red', linestyle=':', label='Altura da Porta')
-    ax1.set_ylabel('Altura (m)', fontsize=12)
-    ax1.set_title('Dinâmica da Fumaça no Compartimento', fontsize=14, fontweight='bold')
-    ax1.set_ylim(0, sala["altura_z"] + 0.2)
-    ax1.legend(loc='lower left')
-    
-    # Gráfico 2: Temperatura da Camada de Fumaça
-    ax2.plot(tempos, T_u_celsius, color='firebrick', linewidth=2, label='Temperatura da Fumaça ($T_u$)')
-    ax2.axhline(y=600, color='darkorange', linestyle='--', label='Risco de Flashover (600°C)')
-    ax2.set_xlabel('Tempo (s)', fontsize=12)
-    ax2.set_ylabel('Temperatura (°C)', fontsize=12)
-    ax2.legend(loc='upper left')
-    
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 8))
+    fig.suptitle('Incêndio com ignição sequencial (Cama → Guarda-Roupa)', fontweight='bold')
+
+    ax1.plot(t, Z_int, 'k', lw=2)
+    ax1.axhline(sala["altura_z"], color='gray', ls='--')
+    ax1.axhline(aberturas[0]["dimensoes"]["z"], color='red', ls=':')
+    ax1.set_ylabel('Altura da interface (m)')
+    ax1.set_title('Dinâmica da fumaça')
+    ax1.legend(['Z_int', 'Teto', 'Altura da porta'])
+
+    ax2.plot(t, T_u_celsius, 'firebrick', lw=2)
+    ax2.axhline(600, color='darkorange', ls='--', label='Flashover 600°C')
+    ax2.axhline(300, color='blue', ls=':', label='Ignição madeira 300°C')
+    ax2.set_ylabel('Temperatura (°C)')
+    ax2.set_title('Temperatura da camada superior')
+    ax2.legend()
+
+    ax3.plot(t, Y_o2*100, 'b', label='O₂')
+    ax3.plot(t, Y_co2*100, 'g', label='CO₂')
+    ax3.set_xlabel('Tempo (s)')
+    ax3.set_ylabel('Fração mássica (%)')
+    ax3.set_title('Composição na camada superior')
+    ax3.legend()
+
+    ax4.plot(t, Y_co*1e6, 'purple', lw=2)  # ppm mássico
+    ax4.set_xlabel('Tempo (s)')
+    ax4.set_ylabel('CO (ppm)')
+    ax4.set_title('Monóxido de Carbono')
+    ax4.grid(True)
+
     plt.tight_layout()
     plt.show()
 
