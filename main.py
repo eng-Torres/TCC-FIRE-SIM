@@ -31,6 +31,7 @@ def rodar_teste():
         objeto_inicial=objeto_inicial,
         outros_objetos=outros_materiais,
         t_final=tempo_simulacao,
+        modelo_pluma='heskestad', # padrão é heskestad
         crescimento_t2="medio"  # fallback se material não existir
     )
 

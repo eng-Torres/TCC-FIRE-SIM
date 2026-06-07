@@ -2,7 +2,7 @@
 Módulo de Dinâmica de Camadas
 Resolve as Equações de Conservação de Massa, Energia e Espécies.
 Baseado no SFPE Handbook (Cap. 36) e CFAST (NIST SP 1026).
-Inclui correção rigorosa da pluma (Zukoski) e suporte a múltiplos objetos com ignição sequencial.
+Inclui correção rigorosa da pluma (Zukoski ou Heskestad) e suporte a múltiplos objetos com ignição sequencial.
 """
 
 import numpy as np
@@ -20,10 +20,43 @@ Y_O2_AMB = 0.23      # fração mássica de O2 no ar ambiente
 Y_CO2_AMB = 0.0
 Y_CO_AMB = 0.0
 
-def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2):
+# -----------------------------------------------------------
+# Correlações de pluma disponíveis
+# -----------------------------------------------------------
+def _pluma_zukoski(Q_c, z):
+    """
+    Vazão mássica total da pluma – Zukoski (1981).
+    Q_c : potência convectiva [kW]
+    z   : altura acima da base do fogo [m]
+    Retorna: vazão mássica [kg/s]
+    """
+    if z <= 0.01 or Q_c <= 0.0:
+        return 0.0
+    return 0.071 * (Q_c ** (1.0 / 3.0)) * (z ** (5.0 / 3.0))
+
+def _pluma_heskestad(Q_c, z, D=0.5):
+    """
+    Vazão mássica total da pluma – Heskestad (1983).
+    Q_c : potência convectiva [kW]
+    z   : altura acima da base do fogo [m]
+    D   : diâmetro equivalente do fogo [m]
+    Retorna: vazão mássica [kg/s]
+    """
+    if z <= 0.01 or Q_c <= 0.0:
+        return 0.0
+    z0 = -1.02 * D + 0.083 * (Q_c ** 0.4)
+    if z <= z0:
+        return 0.0
+    m = 0.071 * (Q_c ** (1.0 / 3.0)) * ((z - z0) ** (5.0 / 3.0))
+    m *= 1.0 + 0.026 * (Q_c ** (2.0 / 3.0)) / ((z - z0) ** (5.0 / 3.0))
+    return m
+
+
+def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2, modelo_pluma='heskestad'):
     """
     Sistema de EDOs de conservação com múltiplos objetos.
     y = [m_u, H_u, m_o2, m_co2, m_co]
+    modelo_pluma : 'zukoski' ou 'heskestad'
     """
     m_u, H_u, m_o2, m_co2, m_co = y
 
@@ -43,13 +76,15 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2):
     Q_dot, m_dot_fuel, delta_Hc, nu_o2, y_co2, y_co = \
         calcular_hrr_total_e_propriedades(t, objetos_ativos)
 
-    Q_c = 0.7 * Q_dot
-    # Pluma (Zukoski) – vazão total
-    if Z_int > 0.01 and Q_c > 0:
-        m_dot_plume_total = 0.071 * (Q_c ** (1.0/3.0)) * (Z_int ** (5.0/3.0))
-    else:
-        m_dot_plume_total = 0.0
+    # Escolha da função de pluma
+    if modelo_pluma == 'zukoski':
+        _calc_pluma = lambda Qc, z: _pluma_zukoski(Qc, z)
+    else:  # 'heskestad' ou qualquer outra string
+        _calc_pluma = lambda Qc, z: _pluma_heskestad(Qc, z)
 
+    Q_c = 0.7 * Q_dot
+    # Pluma – vazão total
+    m_dot_plume_total = _calc_pluma(Q_c, Z_int)
     m_dot_entrained = max(0.0, m_dot_plume_total - m_dot_fuel)
 
     # Ventilação pela porta
@@ -81,42 +116,29 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2):
         Q_dot *= fator
         Q_c = 0.7 * Q_dot
         # Recalcular pluma com a nova potência convectiva
-        if Z_int > 0.01 and Q_c > 0:
-            m_dot_plume_total = 0.071 * (Q_c ** (1.0/3.0)) * (Z_int ** (5.0/3.0))
-        else:
-            m_dot_plume_total = 0.0
+        m_dot_plume_total = _calc_pluma(Q_c, Z_int)
         m_dot_entrained = max(0.0, m_dot_plume_total - m_dot_fuel)
         m_dot_o2_consumido = m_dot_fuel * nu_o2
         m_dot_co2_produzido = m_dot_fuel * y_co2
         m_dot_co_produzido  = m_dot_fuel * y_co
+
     # -----------------------------------------------------------
-    # Extinção definitiva: se o fogo já não aquece significativamente
-    # ou a temperatura da camada superior está próxima da ambiente,
-    # a pluma é desligada (fogo extinto).
-        
-    # --- Critério de extinção suave ---
-        
-    # Parâmetros de transição
-    Qc_lim_inf = 1.0      # kW  – abaixo disto a pluma é considerada extinta
-    Qc_lim_sup = 2.0      # kW  – acima disto a pluma está completamente ativa
-    deltaT_lim = 1.0      # K   – diferença de temperatura mínima para manter a pluma
+    # Extinção suave
+    # -----------------------------------------------------------
+    Qc_lim_inf = 1.0      # kW
+    Qc_lim_sup = 2.0      # kW
+    deltaT_lim = 1.0      # K
 
     if t > 1.0:
-        # Fator baseado na potência convectiva
         fator_Qc = np.clip((Q_c - Qc_lim_inf) / (Qc_lim_sup - Qc_lim_inf), 0.0, 1.0)
-        # Fator baseado na diferença de temperatura
         fator_dT = np.clip((T_u - T_AMB) / deltaT_lim, 0.0, 1.0)
         fator_extincao = min(fator_Qc, fator_dT)
 
-        # Aplica o fator diretamente às potências (não às taxas)
         Q_c *= fator_extincao
         Q_dot *= fator_extincao
 
         # Recalcula a pluma com a potência atenuada
-        if Z_int > 0.01 and Q_c > 0:
-            m_dot_plume_total = 0.071 * (Q_c ** (1.0/3.0)) * (Z_int ** (5.0/3.0))
-        else:
-            m_dot_plume_total = 0.0
+        m_dot_plume_total = _calc_pluma(Q_c, Z_int)
 
         # Recalcula a taxa de queima com o novo Q_dot
         if delta_Hc > 0:
@@ -124,7 +146,6 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2):
         else:
             m_dot_fuel = 0.0
 
-        # Atualiza ar entranhado e espécies de forma consistente
         m_dot_entrained = max(0.0, m_dot_plume_total - m_dot_fuel)
         m_dot_o2_consumido = m_dot_fuel * nu_o2
         m_dot_co2_produzido = m_dot_fuel * y_co2
@@ -160,10 +181,12 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2):
 
 def simular_incendio_sequencial(sala, aberturas,
                                 objeto_inicial, outros_objetos,
-                                t_final=600, crescimento_t2="medio"):
+                                t_final=600, crescimento_t2="medio",
+                                modelo_pluma='heskestad'):
     """
     Simulação completa com ignição sequencial.
     Retorna arrays de tempo e estados (t, y).
+    modelo_pluma : 'zukoski' ou 'heskestad'
     """
     objetos_ativos = [{'nome_material': objeto_inicial['nome_material'], 't_ign': 0.0}]
     objetos_inativos = [{'nome_material': mat, 't_ign': None} for mat in outros_objetos]
@@ -199,7 +222,7 @@ def simular_incendio_sequencial(sala, aberturas,
             equacoes_sfpe,
             t_span,
             y_atual,
-            args=(sala, aberturas, objetos_ativos, crescimento_t2),
+            args=(sala, aberturas, objetos_ativos, crescimento_t2, modelo_pluma),
             events=evento_ignicao,
             method='Radau',
             max_step=1.0
@@ -221,7 +244,7 @@ def simular_incendio_sequencial(sala, aberturas,
                     equacoes_sfpe,
                     t_span_rest,
                     y_atual,
-                    args=(sala, aberturas, objetos_ativos, crescimento_t2),
+                    args=(sala, aberturas, objetos_ativos, crescimento_t2, modelo_pluma),
                     method='Radau',
                     max_step=1.0
                 )
