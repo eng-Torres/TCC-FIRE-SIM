@@ -31,7 +31,7 @@ def rodar_teste():
         objeto_inicial=objeto_inicial,
         outros_objetos=outros_materiais,
         t_final=tempo_simulacao,
-        modelo_pluma='heskestad', # padrão é heskestad
+        modelo_pluma='zukoski', # padrão é zukoski, e a outra opção é heskestad (NOT FULLY FUNCIONAL, NEED FIX)
         crescimento_t2="medio"  # fallback se material não existir
     )
 
@@ -42,6 +42,7 @@ def rodar_teste():
     m_o2  = y[2]
     m_co2 = y[3]
     m_co  = y[4]
+    T_w   = y[5]
 
     C_P = 1.005
     R_AR = 0.287
@@ -49,6 +50,7 @@ def rodar_teste():
 
     T_u = H_u / (m_u * C_P)
     T_u_celsius = T_u - 273.15
+    T_w_celsius = T_w -273.15
     V_u = (m_u * R_AR * T_u) / P_ATM
     Z_int = sala["altura_z"] - (V_u / sala["area_piso"])
     Z_int = np.maximum(Z_int, 0.0)
@@ -70,11 +72,13 @@ def rodar_teste():
     ax1.set_title('Dinâmica da fumaça')
     ax1.legend(['Z_int', 'Teto', 'Altura da porta'])
 
-    ax2.plot(t, T_u_celsius, 'firebrick', lw=2)
+    ax2.plot(t, T_u_celsius, 'firebrick', lw=2, label='Camada superior')
+    ax2.plot(t, T_w_celsius, 'brown', lw=1.5, ls='--', label='Parede (superfície)')
+    ax2.axhline(20, color='gray', ls=':', label='Ambiente (20°C)')
     ax2.axhline(600, color='darkorange', ls='--', label='Flashover 600°C')
     ax2.axhline(300, color='blue', ls=':', label='Ignição madeira 300°C')
     ax2.set_ylabel('Temperatura (°C)')
-    ax2.set_title('Temperatura da camada superior')
+    ax2.set_title('Temperaturas do compartimento')
     ax2.legend()
 
     ax3.plot(t, Y_o2*100, 'b', label='O₂')
