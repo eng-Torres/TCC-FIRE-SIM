@@ -27,13 +27,22 @@ def carregar_geometria_padrao():
             "nome": "Guarda-Roupa",
             "posicao": {"x": 0.0, "y": 1.0, "z": 0.0},
             "dimensoes": {"x": 1.5, "y": 0.6, "z": 2.2},
-            "tipo_material": "madeira" # Gancho para a física ler depois
+            "tipo_material": "madeira" ,
+            "T_ign": 573.15   # 300 °C
         },
         {
             "nome": "Cama de Casal",
             "posicao": {"x": 2.6, "y": 2.0, "z": 0.0},
             "dimensoes": {"x": 1.4, "y": 2.0, "z": 0.5},
-            "tipo_material": "espuma_poliuretano"
+            "tipo_material": "espuma_poliuretano",
+            "T_ign": 573.15   # 300 °C
+        },
+        {
+            "nome": "Tapete de Papelao",
+            "posicao": {"x": 1.5, "y": 1.0, "z": 0.0},
+            "dimensoes": {"x": 1.0, "y": 2.0, "z": 0.01},
+            "tipo_material": "papelao",
+            "T_ign": 373.15   # 100 °C
         }
     ]
 
@@ -43,7 +52,7 @@ def carregar_geometria_padrao():
         {
             "nome": "Porta Principal",
             "posicao": {"x": 1.6, "y": 0.0, "z": 0.0},
-            "dimensoes": {"x": 0.8, "y": 0.0, "z": 2.1} 
+            "dimensoes": {"x": 0.4, "y": 0.0, "z": 2.1} 
         }
     ]
 

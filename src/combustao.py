@@ -28,7 +28,8 @@ def propriedades_combustao(nome_material: str) -> dict:
             "delta_Hc": dados["delta_Hc"],
             "nu_o2": dados["nu_o2"],
             "y_co2": dados["y_co2"],
-            "y_co": dados["y_co"]
+            "y_co": dados["y_co"],
+            "hrrpua_max": dados.get("hrrpua_max", 500.0) 
         }
     else:
         return COMBUSTAO_PADRAO.copy()

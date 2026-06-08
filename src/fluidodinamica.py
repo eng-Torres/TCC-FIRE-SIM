@@ -133,6 +133,8 @@ def calcular_fluxo_porta_duas_zonas(
 
     # Chute inicial: usar solução sem interface (ou z_i como referência)
     # Aproveitamos a lógica da função original para dar um bom chute.
+    if densidade_fumaca <= 0.0 or densidade_ar <= 0.0:
+        return {"z_n": altura_porta / 2.0, "m_dot_in": 0.0, "m_dot_out": 0.0}
     r = densidade_fumaca / densidade_ar
     z0 = H * r ** (1 / 3) / (1 + r ** (1 / 3))
     # Se a interface estiver muito baixa, o plano neutro tende a cair; ajustamos o chute.
@@ -144,8 +146,10 @@ def calcular_fluxo_porta_duas_zonas(
         z_n_sol = max(0.0, min(H, z_n_sol))
     except RuntimeError:
         # Fallback: usar solução analítica da função original (ignora interface)
-        z_n_sol = H / (1 + (densidade_ar / densidade_fumaca) ** (1 / 3))
-
+        if densidade_ar <= 0.0 or densidade_fumaca <= 0.0:
+            z_n_sol = altura_porta / 2.0
+        else:
+            z_n_sol = H / (1 + (densidade_ar / densidade_fumaca) ** (1.0 / 3.0))
     # Calcular fluxos com o z_n encontrado
     m_in_final, m_out_final = fluxos(z_n_sol)
 

@@ -24,6 +24,7 @@ BANCO_MATERIAIS = {
     "espuma_poliuretano": {
         "tempo": np.array([0, 10, 20, 30, 40, 50, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480, 540, 600]),
         "hrr":   np.array([0, 20, 80, 160, 250, 320, 380, 360, 310, 250, 190, 100, 50, 25, 10, 5, 2, 0]),
+        "hrrpua_max": 800.0,  # kW/m²
         "delta_Hc": 20.0e3,   # kJ/kg (típico de PU flexível)
         "nu_o2": 2.2,         # kg O2 / kg fuel (base estequiométrica aproximada)
         "y_co2": 2.1,         # kg CO2 / kg fuel
@@ -32,6 +33,7 @@ BANCO_MATERIAIS = {
     "madeira": {
         "tempo": np.array([0, 30, 60, 90, 120, 180, 240, 300, 360, 420, 480, 540, 600]),
         "hrr":   np.array([0, 40, 100, 160, 200, 240, 230, 190, 140, 100, 60, 30, 10]),
+        "hrrpua_max": 250.0,  # kW/m²
         "delta_Hc": 16.0e3,   # kJ/kg (madeira seca)
         "nu_o2": 1.4,         # kg O2 / kg fuel
         "y_co2": 1.5,         # kg CO2 / kg fuel
@@ -40,6 +42,7 @@ BANCO_MATERIAIS = {
     "papelao": {
         "tempo": np.array([0, 10, 20, 30, 45, 60, 90, 120, 150, 180, 210, 240, 270, 300]),
         "hrr":   np.array([0, 10, 60, 140, 220, 280, 290, 240, 170, 100, 50, 20, 5, 0]),
+        "hrrpua_max": 200.0,  # kW/m²
         "delta_Hc": 18.0e3,
         "nu_o2": 1.8,
         "y_co2": 1.9,
