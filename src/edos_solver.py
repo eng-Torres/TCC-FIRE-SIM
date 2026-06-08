@@ -19,9 +19,9 @@ from src.banco_materiais import MATERIAIS_CONSTRUCAO
 # Parâmetros de simulação (ajustáveis)
 # ============================================================
 MATERIAL_PAREDE = 'concreto_normal'   # chave em MATERIAIS_CONSTRUCAO
-TAU_D = 20.0                          # constante de tempo do filtro do diâmetro [s]
+TAU_D = 80.0                          # constante de tempo do filtro do diâmetro [s]
 D_FOGO_INICIAL = 0.5                  # diâmetro inicial do fogo [m]
-MAX_STEP = 0.1                        # passo máximo do integrador [s]
+MAX_STEP = 0.05                        # passo máximo do integrador [s]
 PONTOS_POR_SEGUNDO = 10               # densidade do t_eval
 
 # Propriedades da parede extraídas do banco de materiais

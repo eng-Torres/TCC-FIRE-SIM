@@ -18,11 +18,11 @@ def rodar_teste():
     # Identificar objetos
     cama = next(obj for obj in objetos if obj["nome"] == "Cama de Casal")
     guarda_roupa = next(obj for obj in objetos if obj["nome"] == "Guarda-Roupa")
-    # tapete = next(obj for obj in objetos if obj["nome"] == "Tapete de Papelao")
+    tapete = next(obj for obj in objetos if obj["nome"] == "Tapete de Papelao")
 
     objeto_inicial = {"nome_material": cama["tipo_material"]}
     outros_materiais = [
-        # {"nome_material": tapete["tipo_material"], "T_ign": tapete["T_ign"]},
+        {"nome_material": tapete["tipo_material"], "T_ign": tapete["T_ign"]},
         {"nome_material": guarda_roupa["tipo_material"], "T_ign": guarda_roupa["T_ign"]}
     ]
 
