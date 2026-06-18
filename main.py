@@ -9,7 +9,7 @@ from src.constantes import C_P, R_AR, P_ATM, T_AMB
 from src.outputs import plotar_graficos, exportar_dados
 
 # Escolhe o modo de saída: 'plot' para gráficos, 'csv' para ficheiro de texto
-MODO_SAIDA = 'csv'   # alterna para 'csv' quando quiseres exportar os dados
+MODO_SAIDA = 'plot'   # alterna para 'csv' quando quiseres exportar os dados
 
 def rodar_teste():
     print("Carregando cenário padrão...")

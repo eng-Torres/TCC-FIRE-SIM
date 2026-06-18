@@ -3,7 +3,7 @@ Módulo de Dinâmica de Camadas
 Resolve as Equações de Conservação de Massa, Energia e Espécies.
 Baseado no SFPE Handbook (Cap. 36) e CFAST (NIST SP 1026).
 Inclui correlação da pluma (Zukoski ou Heskestad),
-modelo de parede com inércia térmica e radiação,
+modelo de parede com condução transiente (N nós),
 suporte a múltiplos objetos com ignição sequencial,
 e diâmetro da base da chama dinâmico e suave (HRRPUA + filtro).
 """
@@ -14,6 +14,7 @@ from src.fluidodinamica import calcular_fluxo_porta_duas_zonas
 from src.combustao import calcular_hrr_total_e_propriedades, propriedades_combustao
 from src.constantes import *                      # constantes físicas universais
 from src.banco_materiais import MATERIAIS_CONSTRUCAO
+from src.termica_parede import criar_parede, derivadas_parede
 
 # ============================================================
 # Parâmetros de simulação (ajustáveis)
@@ -22,6 +23,7 @@ MATERIAL_PAREDE = 'concreto_normal'   # chave em MATERIAIS_CONSTRUCAO
 TAU_D = 80.0                          # constante de tempo do filtro do diâmetro [s]
 MAX_STEP = 0.05                        # passo máximo do integrador [s]
 PONTOS_POR_SEGUNDO = 10               # densidade do t_eval
+N_NOS = 5                             # número de nós na discretização da parede
 
 # Propriedades da parede extraídas do banco de materiais
 props_parede = MATERIAIS_CONSTRUCAO[MATERIAL_PAREDE]
@@ -32,8 +34,18 @@ E_W = props_parede['espessura']
 H_CONV = props_parede['h_conv']
 epsilon = props_parede['emissividade']
 
-# Coeficiente auxiliar da parede (condução para o exterior)
-C2 = K_W / (RHO_W * CP_W * E_W**2)     # [1/s]
+# Inicializa o modelo de condução (parâmetros constantes da malha)
+params_parede = criar_parede(
+    N_nos=N_NOS,
+    espessura_total=E_W,
+    k=K_W,
+    rho=RHO_W,
+    cp=CP_W,
+    h_conv_int=H_CONV,
+    emissividade=epsilon,
+    T_amb=T_AMB,
+    h_conv_ext=0.005          # convecção exterior [kW/(m²·K)]
+)
 
 # -----------------------------------------------------------
 # Correlações de pluma disponíveis
@@ -66,10 +78,17 @@ def _pluma_heskestad(Q_c, z, D):
 def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2, modelo_pluma='zukoski'):
     """
     Sistema de EDOs de conservação com múltiplos objetos.
-    y = [m_u, H_u, m_o2, m_co2, m_co, T_w, D_fogo]
+    y = [m_u, H_u, m_o2, m_co2, m_co, T_w0, T_w1, ..., T_w(N-1), D_fogo]
     modelo_pluma : 'zukoski' ou 'heskestad'
     """
-    m_u, H_u, m_o2, m_co2, m_co, T_w, D_fogo = y
+    # Extrair as variáveis
+    m_u   = y[0]
+    H_u   = y[1]
+    m_o2  = y[2]
+    m_co2 = y[3]
+    m_co  = y[4]
+    T_parede = y[5:5+N_NOS]      # temperaturas dos nós da parede
+    D_fogo   = y[-1]             # diâmetro filtrado
 
     m_u = max(m_u, 0.001)
     m_o2 = max(m_o2, 0.0)
@@ -166,11 +185,11 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2, modelo_
     A_paredes_sup = 2 * (L + W) * (H_sala - Z_int)
     A_contato = A_teto + A_paredes_sup
 
-    # Perda de calor da camada superior para a parede (convecção + radiação)
-    Q_rad = epsilon * SIGMA * A_contato * (T_u**4 - T_w**4)
-    Q_conv = H_CONV * A_contato * (T_u - T_w)
+    # Perda de calor da camada superior para a superfície interna (nó 0)
+    T_w0 = T_parede[0]
+    Q_rad = epsilon * SIGMA * A_contato * (T_u**4 - T_w0**4)
+    Q_conv = H_CONV * A_contato * (T_u - T_w0)
     Q_loss = Q_conv + Q_rad
-    q_dot_w = H_CONV * (T_u - T_w) + epsilon * SIGMA * (T_u**4 - T_w**4)
 
     # Balanço de energia da camada superior
     dH_dt = (Q_c
@@ -178,11 +197,11 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2, modelo_
              - m_dot_out * C_P * T_u
              - Q_loss)
 
-    # Balanço da parede
-    C1 = q_dot_w / (RHO_W * CP_W * E_W)          # ganho de calor [1/s]
-    dTw_dt = C1 - C2 * (T_w - T_AMB)
+    # Derivadas da parede (chama o módulo termica_parede)
+    dT_parede_dt = derivadas_parede(T_u, T_parede, params_parede)
 
-    return [dm_dt, dH_dt, dm_o2_dt, dm_co2_dt, dm_co_dt, dTw_dt, dD_dt]
+    # As derivadas são: [massa, entalpia, O2, CO2, CO] + [N_NOS temperaturas] + [diâmetro]
+    return [dm_dt, dH_dt, dm_o2_dt, dm_co2_dt, dm_co_dt] + list(dT_parede_dt) + [dD_dt]
 
 
 def simular_incendio_sequencial(sala, aberturas,
@@ -223,12 +242,18 @@ def simular_incendio_sequencial(sala, aberturas,
     m_o2_0 = m_u_0 * Y_O2_AMB
     m_co2_0 = m_u_0 * Y_CO2_AMB
     m_co_0 = m_u_0 * Y_CO_AMB
-    T_w0 = T_AMB
+
+    # Inicializar todas as temperaturas da parede a T_AMB
+    T_parede0 = np.full(N_NOS, T_AMB)
+
     # Diâmetro inicial consistente com a área ativa mínima (HRR = 0)
     area_ativa_min = 0.1   # mesmo valor usado em equacoes_sfpe
     D_fogo0 = np.sqrt(4.0 * area_ativa_min / np.pi)
 
-    y0 = np.array([m_u_0, H_u_0, m_o2_0, m_co2_0, m_co_0, T_w0, D_fogo0])
+    # Construir o vetor y0
+    y0 = np.concatenate([np.array([m_u_0, H_u_0, m_o2_0, m_co2_0, m_co_0]),
+                         T_parede0,
+                         np.array([D_fogo0])])
 
     t_atual = 0.0
     y_atual = y0.copy()
@@ -238,7 +263,8 @@ def simular_incendio_sequencial(sala, aberturas,
         T_IGN_ATUAL = min(obj['T_ign'] for obj in objetos_inativos)
 
         def evento_ignicao(t, y, *args):
-            m_u, H_u = y[0], y[1]
+            m_u = y[0]
+            H_u = y[1]
             T_u = H_u / (m_u * C_P)
             return T_u - T_IGN_ATUAL
         evento_ignicao.terminal = True
