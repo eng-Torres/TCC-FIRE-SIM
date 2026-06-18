@@ -20,7 +20,6 @@ from src.banco_materiais import MATERIAIS_CONSTRUCAO
 # ============================================================
 MATERIAL_PAREDE = 'concreto_normal'   # chave em MATERIAIS_CONSTRUCAO
 TAU_D = 80.0                          # constante de tempo do filtro do diâmetro [s]
-D_FOGO_INICIAL = 0.5                  # diâmetro inicial do fogo [m]
 MAX_STEP = 0.05                        # passo máximo do integrador [s]
 PONTOS_POR_SEGUNDO = 10               # densidade do t_eval
 
@@ -225,7 +224,9 @@ def simular_incendio_sequencial(sala, aberturas,
     m_co2_0 = m_u_0 * Y_CO2_AMB
     m_co_0 = m_u_0 * Y_CO_AMB
     T_w0 = T_AMB
-    D_fogo0 = D_FOGO_INICIAL
+    # Diâmetro inicial consistente com a área ativa mínima (HRR = 0)
+    area_ativa_min = 0.1   # mesmo valor usado em equacoes_sfpe
+    D_fogo0 = np.sqrt(4.0 * area_ativa_min / np.pi)
 
     y0 = np.array([m_u_0, H_u_0, m_o2_0, m_co2_0, m_co_0, T_w0, D_fogo0])
 

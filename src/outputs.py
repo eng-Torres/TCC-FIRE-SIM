@@ -84,19 +84,43 @@ def plotar_graficos(t, y, sala, aberturas, C_P, R_AR, P_ATM):
     plt.tight_layout()
     plt.show()
 
-def exportar_dados(t, y, sala, aberturas, C_P, R_AR, P_ATM, nome_ficheiro="resultados.csv"):
+def exportar_dados(t, y, sala, aberturas, C_P, R_AR, P_ATM,
+                   nome_ficheiro="resultados.csv", dt_print=10.0):
     """
-    Escreve as variáveis de estado num ficheiro CSV.
+    Escreve as variáveis de estado num ficheiro CSV, amostradas de dt_print em dt_print segundos.
     """
-    dados = _extrair_campos(t, y, sala, aberturas, C_P, R_AR, P_ATM)
-    # Monta uma tabela com as variáveis mais relevantes
+    # Gerar os instantes de saída (desde t=0 até ao final, com passo dt_print)
+    t_alvo = np.arange(0.0, t[-1] + dt_print, dt_print)
+    
+    # Interpolar cada variável para os instantes alvo
+    m_u    = np.interp(t_alvo, t, y[0])
+    H_u    = np.interp(t_alvo, t, y[1])
+    m_o2   = np.interp(t_alvo, t, y[2])
+    m_co2  = np.interp(t_alvo, t, y[3])
+    m_co   = np.interp(t_alvo, t, y[4])
+    T_w    = np.interp(t_alvo, t, y[5])
+    D_fogo = np.interp(t_alvo, t, y[6])
+    
+    # Calcular as grandezas derivadas
+    T_u = H_u / (m_u * C_P)
+    T_u_celsius = T_u - 273.15
+    T_w_celsius = T_w - 273.15
+    V_u = (m_u * R_AR * T_u) / P_ATM
+    Z_int = sala["altura_z"] - (V_u / sala["area_piso"])
+    Z_int = np.maximum(Z_int, 0.0)
+    Y_o2  = m_o2  / m_u
+    Y_co2 = m_co2 / m_u
+    Y_co  = m_co  / m_u
+    
+    # Escrever o CSV
     cabecalho = ("Tempo(s), Z_int(m), T_u(C), T_w(C), Y_O2, Y_CO2, Y_CO, D_fogo(m)")
     linhas = []
-    for i in range(len(t)):
-        linhas.append(f"{t[i]:.2f}, {dados['Z_int'][i]:.4f}, {dados['T_u_celsius'][i]:.2f}, "
-                      f"{dados['T_w_celsius'][i]:.2f}, {dados['Y_o2'][i]:.6f}, "
-                      f"{dados['Y_co2'][i]:.6f}, {dados['Y_co'][i]:.6f}, {dados['D_fogo'][i]:.4f}")
+    for i in range(len(t_alvo)):
+        linhas.append(f"{t_alvo[i]:.2f}, {Z_int[i]:.4f}, {T_u_celsius[i]:.2f}, "
+                      f"{T_w_celsius[i]:.2f}, {Y_o2[i]:.6f}, "
+                      f"{Y_co2[i]:.6f}, {Y_co[i]:.6f}, {D_fogo[i]:.4f}")
+    
     with open(nome_ficheiro, 'w') as f:
         f.write(cabecalho + "\n")
         f.write("\n".join(linhas))
-    print(f"Dados exportados para {nome_ficheiro}")
+    print(f"Dados exportados para {nome_ficheiro} (dt = {dt_print} s)")

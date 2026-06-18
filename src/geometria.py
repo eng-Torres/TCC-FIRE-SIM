@@ -52,7 +52,7 @@ def carregar_geometria_padrao():
         {
             "nome": "Porta Principal",
             "posicao": {"x": 1.6, "y": 0.0, "z": 0.0},
-            "dimensoes": {"x": 0.4, "y": 0.0, "z": 2.1} 
+            "dimensoes": {"x": 0.8, "y": 0.0, "z": 2.1} 
         }
     ]
 

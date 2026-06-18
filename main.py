@@ -9,7 +9,7 @@ from src.constantes import C_P, R_AR, P_ATM, T_AMB
 from src.outputs import plotar_graficos, exportar_dados
 
 # Escolhe o modo de saída: 'plot' para gráficos, 'csv' para ficheiro de texto
-MODO_SAIDA = 'plot'   # alterna para 'csv' quando quiseres exportar os dados
+MODO_SAIDA = 'csv'   # alterna para 'csv' quando quiseres exportar os dados
 
 def rodar_teste():
     print("Carregando cenário padrão...")
@@ -18,11 +18,11 @@ def rodar_teste():
     # Identificar objetos
     cama = next(obj for obj in objetos if obj["nome"] == "Cama de Casal")
     guarda_roupa = next(obj for obj in objetos if obj["nome"] == "Guarda-Roupa")
-    tapete = next(obj for obj in objetos if obj["nome"] == "Tapete de Papelao")
+    #tapete = next(obj for obj in objetos if obj["nome"] == "Tapete de Papelao")
 
     objeto_inicial = {"nome_material": cama["tipo_material"]}
     outros_materiais = [
-        {"nome_material": tapete["tipo_material"], "T_ign": tapete["T_ign"]},
+        #{"nome_material": tapete["tipo_material"], "T_ign": tapete["T_ign"]},
         {"nome_material": guarda_roupa["tipo_material"], "T_ign": guarda_roupa["T_ign"]}
     ]
 
@@ -51,7 +51,7 @@ def rodar_teste():
     if MODO_SAIDA == 'plot':
         plotar_graficos(t, y, sala, aberturas, C_P, R_AR, P_ATM)
     elif MODO_SAIDA == 'csv':
-        exportar_dados(t, y, sala, aberturas, C_P, R_AR, P_ATM, nome_ficheiro="resultados_simulacao.csv")
+        exportar_dados(t, y, sala, aberturas, C_P, R_AR, P_ATM, nome_ficheiro="resultados_simulacao.csv",dt_print=10.0)
     else:
         print("Modo de saída desconhecido. Use 'plot' ou 'csv'.")
 
