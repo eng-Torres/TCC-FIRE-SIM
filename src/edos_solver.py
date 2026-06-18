@@ -23,7 +23,7 @@ MATERIAL_PAREDE = 'concreto_normal'   # chave em MATERIAIS_CONSTRUCAO
 TAU_D = 80.0                          # constante de tempo do filtro do diâmetro [s]
 MAX_STEP = 0.05                        # passo máximo do integrador [s]
 PONTOS_POR_SEGUNDO = 10               # densidade do t_eval
-N_NOS = 5                             # número de nós na discretização da parede
+N_NOS = 12                             # número de nós na discretização da parede
 
 # Propriedades da parede extraídas do banco de materiais
 props_parede = MATERIAIS_CONSTRUCAO[MATERIAL_PAREDE]
@@ -132,7 +132,7 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2, modelo_
     else:
         _calc_pluma = lambda Qc, z: _pluma_heskestad(Qc, z, D_fogo)
 
-    Q_c = 0.7 * Q_dot
+    Q_c = 0.8 * Q_dot
     m_dot_plume_total = _calc_pluma(Q_c, Z_int)
     m_dot_entrained = max(0.0, m_dot_plume_total - m_dot_fuel)
 
@@ -162,7 +162,7 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2, modelo_
         fator = m_dot_o2_disp / m_dot_o2_consumido
         m_dot_fuel *= fator
         Q_dot *= fator
-        Q_c = 0.7 * Q_dot
+        Q_c = 0.8 * Q_dot
         m_dot_plume_total = _calc_pluma(Q_c, Z_int)
         m_dot_entrained = max(0.0, m_dot_plume_total - m_dot_fuel)
         m_dot_o2_consumido = m_dot_fuel * nu_o2
