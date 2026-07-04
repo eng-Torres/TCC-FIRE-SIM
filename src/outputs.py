@@ -6,22 +6,24 @@ Compatível com o modelo de parede de N nós (índice 5 = superfície).
 import numpy as np
 import matplotlib.pyplot as plt
 
-def _extrair_campos(t, y, sala, aberturas, C_P, R_AR, P_ATM):
-    """Extrai as variáveis comuns a todas as saídas.
-       y: [m_u, H_u, m_o2, m_co2, m_co, T_w0, ..., T_w(N-1)]
+def _calcular_campos(t, y, sala, C_P, R_AR, P_ATM):
+    """
+    Calcula as grandezas derivadas (temperatura, altura da interface,
+    frações mássicas) a partir do estado y.
+    y: [m_u, H_u, m_o2, m_co2, m_co, T_w0, ..., T_w(N-1)]
     """
     m_u, H_u, m_o2, m_co2, m_co = y[:5]
     T_w = y[5]                       # temperatura da superfície (primeiro nó)
 
-    T_u = H_u / (m_u * C_P)
+    T_u = H_u / np.maximum(m_u, 1e-6)
     T_u_celsius = T_u - 273.15
     T_w_celsius = T_w - 273.15
     V_u = (m_u * R_AR * T_u) / P_ATM
     Z_int = sala["altura_z"] - (V_u / sala["area_piso"])
     Z_int = np.maximum(Z_int, 0.0)
-    Y_o2  = m_o2  / m_u
-    Y_co2 = m_co2 / m_u
-    Y_co  = m_co  / m_u
+    Y_o2  = m_o2  / np.maximum(m_u, 1e-12)
+    Y_co2 = m_co2 / np.maximum(m_u, 1e-12)
+    Y_co  = m_co  / np.maximum(m_u, 1e-12)
     return {
         't': t,
         'Z_int': Z_int,
@@ -30,33 +32,29 @@ def _extrair_campos(t, y, sala, aberturas, C_P, R_AR, P_ATM):
         'Y_o2': Y_o2,
         'Y_co2': Y_co2,
         'Y_co': Y_co,
-        'sala': sala,
-        'aberturas': aberturas
     }
 
-def plotar_graficos(t, y, sala, aberturas, C_P, R_AR, P_ATM):
+def plotar_graficos(t, y, sala, aberturas, C_P, R_AR, P_ATM, titulo="Simulação de Incêndio"):
     """Gera os quatro gráficos padrão no ecrã."""
-    dados = _extrair_campos(t, y, sala, aberturas, C_P, R_AR, P_ATM)
+    dados = _calcular_campos(t, y, sala, C_P, R_AR, P_ATM)
     Z_int = dados['Z_int']
     T_u_celsius = dados['T_u_celsius']
     T_w_celsius = dados['T_w_celsius']
     Y_o2 = dados['Y_o2']
     Y_co2 = dados['Y_co2']
     Y_co = dados['Y_co']
-    sala = dados['sala']
-    aberturas = dados['aberturas']
 
     plt.style.use('seaborn-v0_8-darkgrid')
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 8))
-    fig.suptitle('Incêndio com ignição sequencial (Cama → Guarda-Roupa)', fontweight='bold')
+    fig.suptitle(titulo, fontweight='bold')
 
     # Gráfico 1: Dinâmica da fumaça
     ax1.plot(t, Z_int, 'k', lw=2)
     ax1.axhline(sala["altura_z"], color='gray', ls='--', label='Teto')
-    ax1.axhline(aberturas[0]["dimensoes"]["z"], color='red', ls=':', label='Altura da porta')
+    ax1.axhline(aberturas[0]["dimensoes"]["z"], color='red', ls=':', label='Altura da abertura')
     ax1.set_ylabel('Altura da interface (m)')
     ax1.set_title('Dinâmica da fumaça')
-    ax1.legend(['Z_int', 'Teto', 'Altura da porta'])
+    ax1.legend(['Z_int', 'Teto', 'Altura da abertura'])
 
     # Gráfico 2: Temperaturas
     ax2.plot(t, T_u_celsius, 'firebrick', lw=2, label='Camada superior')
@@ -87,35 +85,26 @@ def plotar_graficos(t, y, sala, aberturas, C_P, R_AR, P_ATM):
     plt.show()
 
 def exportar_dados(t, y, sala, aberturas, C_P, R_AR, P_ATM,
-                   nome_ficheiro="resultados.csv", dt_print=10.0):
+                   nome_ficheiro="resultados.csv", dt_print=10.0,
+                   titulo="Simulação de Incêndio"):
     """
     Escreve as variáveis de estado num ficheiro CSV, amostradas de dt_print em dt_print segundos.
+    O parâmetro 'titulo' é incluído como comentário no cabeçalho, mas não afeta os dados.
     """
     t_alvo = np.arange(0.0, t[-1] + dt_print, dt_print)
 
-    m_u    = np.interp(t_alvo, t, y[0])
-    H_u    = np.interp(t_alvo, t, y[1])
-    m_o2   = np.interp(t_alvo, t, y[2])
-    m_co2  = np.interp(t_alvo, t, y[3])
-    m_co   = np.interp(t_alvo, t, y[4])
-    T_w    = np.interp(t_alvo, t, y[5])      # superfície
+    # Interpola os valores para os instantes desejados
+    y_interp = np.array([np.interp(t_alvo, t, y[i]) for i in range(y.shape[0])])
+    dados = _calcular_campos(t_alvo, y_interp, sala, C_P, R_AR, P_ATM)
 
-    T_u = H_u / (m_u * C_P)
-    T_u_celsius = T_u - 273.15
-    T_w_celsius = T_w - 273.15
-    V_u = (m_u * R_AR * T_u) / P_ATM
-    Z_int = sala["altura_z"] - (V_u / sala["area_piso"])
-    Z_int = np.maximum(Z_int, 0.0)
-    Y_o2  = m_o2  / m_u
-    Y_co2 = m_co2 / m_u
-    Y_co  = m_co  / m_u
-
-    cabecalho = ("Tempo(s), Z_int(m), T_u(C), T_w(C), Y_O2, Y_CO2, Y_CO")
+    cabecalho = f"# Cenário: {titulo}\nTempo(s), Z_int(m), T_u(C), T_w(C), Y_O2, Y_CO2, Y_CO"
     linhas = []
     for i in range(len(t_alvo)):
-        linhas.append(f"{t_alvo[i]:.2f}, {Z_int[i]:.4f}, {T_u_celsius[i]:.2f}, "
-                      f"{T_w_celsius[i]:.2f}, {Y_o2[i]:.6f}, "
-                      f"{Y_co2[i]:.6f}, {Y_co[i]:.6f}")
+        linhas.append(
+            f"{t_alvo[i]:.2f}, {dados['Z_int'][i]:.4f}, {dados['T_u_celsius'][i]:.2f}, "
+            f"{dados['T_w_celsius'][i]:.2f}, {dados['Y_o2'][i]:.6f}, "
+            f"{dados['Y_co2'][i]:.6f}, {dados['Y_co'][i]:.6f}"
+        )
 
     with open(nome_ficheiro, 'w') as f:
         f.write(cabecalho + "\n")
