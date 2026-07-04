@@ -57,3 +57,40 @@ def carregar_geometria_padrao():
     ]
 
     return sala, objetos, aberturas
+
+def carregar_geometria_teste2_1991():
+    """Geometria do Teste 2 de Peacock et al. (1991) – Secção 5."""
+    sala = {
+        "comprimento_x": 2.26,
+        "profundidade_y": 3.94,
+        "altura_z": 2.31,
+        "area_piso": 2.26 * 3.94,
+        "volume_total": 2.26 * 3.94 * 2.31
+    }
+
+    objetos = [
+        {
+            "nome": "Cesto de Lixo",
+            "posicao": {"x": 1.13, "y": 2.0, "z": 0.0},
+            "dimensoes": {"x": 0.3, "y": 0.3, "z": 0.4},
+            "tipo_material": "cesto_lixo",
+            "T_ign": 373.15   # 100 °C (não é relevante, é o foco inicial)
+        },
+        {
+            "nome": "Love Seat",
+            "posicao": {"x": 1.13, "y": 1.0, "z": 0.0},
+            "dimensoes": {"x": 1.5, "y": 0.8, "z": 0.9},
+            "tipo_material": "armchair_h",   # ou "chair_h" se usares a curva real
+            "T_ign": 343.15   # 70 °C imitar um incendio que o cesto esta em contato com o love seat
+        }
+    ]
+
+    aberturas = [
+        {
+            "nome": "Janela",
+            "posicao": {"x": 0.13, "y": 0.0, "z": 0.0},  # centrada: (2.26-2.0)/2 = 0.13
+            "dimensoes": {"x": 2.0, "y": 0.0, "z": 1.50}
+        }
+    ]
+
+    return sala, objetos, aberturas

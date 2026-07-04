@@ -1,11 +1,11 @@
+# src/edos_solver.py 
 """
 Módulo de Dinâmica de Camadas
 Resolve as Equações de Conservação de Massa, Energia e Espécies.
 Baseado no SFPE Handbook (Cap. 36) e CFAST (NIST SP 1026).
-Inclui correlação da pluma (Zukoski ou Heskestad),
+Inclui correlação da pluma (Zukoski, McCaffrey ou Heskestad),
 modelo de parede com condução transiente (N nós),
-suporte a múltiplos objetos com ignição sequencial,
-e diâmetro da base da chama dinâmico e suave (HRRPUA + filtro).
+suporte a múltiplos objetos com ignição sequencial.
 """
 
 import numpy as np
@@ -20,7 +20,6 @@ from src.termica_parede import criar_parede, derivadas_parede
 # Parâmetros de simulação (ajustáveis)
 # ============================================================
 MATERIAL_PAREDE = 'gesso_16mm'   # chave em MATERIAIS_CONSTRUCAO
-TAU_D = 20.0                          # constante de tempo do filtro do diâmetro [s]
 MAX_STEP = 0.1                        # passo máximo do integrador [s]
 PONTOS_POR_SEGUNDO = 10               # densidade do t_eval
 N_NOS = 12                             # número de nós na discretização da parede
@@ -57,22 +56,14 @@ def _pluma_zukoski(Q_c, z):
     return 0.071 * (Q_c ** (1.0 / 3.0)) * (z ** (5.0 / 3.0))
 
 def _pluma_heskestad(Q_c, z, D):
-    """Heskestad (1983) com transição suave na origem virtual."""
+    """Heskestad (1984) – formulação clássica, sem transição suave."""
     if z <= 0.01 or Q_c <= 0.0:
         return 0.0
     z0 = -1.02 * D + 0.083 * (Q_c ** 0.4)
-    delta = max(0.1, abs(z0) * 0.1)
-    if z <= z0 - delta:
-        return 0.0
-    elif z <= z0 + delta:
-        t = (z - (z0 - delta)) / (2.0 * delta)
-        f = t**2 * (3.0 - 2.0 * t)
-    else:
-        f = 1.0
     z_eff = max(z - z0, 0.01)
     m = 0.071 * (Q_c ** (1.0 / 3.0)) * (z_eff ** (5.0 / 3.0))
     m *= 1.0 + 0.026 * (Q_c ** (2.0 / 3.0)) / (z_eff ** (5.0 / 3.0))
-    return f * m
+    return m
 
 def _pluma_mccaffrey(Q_c, z):
     """McCaffrey (1979) – vazão mássica total [kg/s]."""
@@ -89,17 +80,16 @@ def _pluma_mccaffrey(Q_c, z):
 def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2, modelo_pluma='zukoski'):
     """
     Sistema de EDOs de conservação com múltiplos objetos.
-    y = [m_u, H_u, m_o2, m_co2, m_co, T_w0, T_w1, ..., T_w(N-1), D_fogo]
-    modelo_pluma : 'zukoski' ou 'heskestad'
+    y = [m_u, H_u, m_o2, m_co2, m_co, T_w0, T_w1, ..., T_w(N-1)]
+    modelo_pluma : 'zukoski', 'heskestad' ou 'mccaffrey'
     """
-    # Extrair as variáveis
+    # Extrair as variáveis 
     m_u   = y[0]
     H_u   = y[1]
     m_o2  = y[2]
     m_co2 = y[3]
     m_co  = y[4]
     T_parede = y[5:5+N_NOS]      # temperaturas dos nós da parede
-    D_fogo   = y[-1]             # diâmetro filtrado
 
     m_u = max(m_u, 0.001)
     m_o2 = max(m_o2, 0.0)
@@ -118,27 +108,10 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2, modelo_
     Q_dot, m_dot_fuel, delta_Hc, nu_o2, y_co2, y_co = \
         calcular_hrr_total_e_propriedades(t, objetos_ativos)
 
-    # Cálculo do diâmetro instantâneo com base na HRR e HRRPUA
-    total_area_objetos = sum(obj.get('area', 0.0) for obj in objetos_ativos)
-    if total_area_objetos <= 0.0:
-        D_calc = 0.5
-    else:
-        hrrpua_ponderado = 0.0
-        for obj in objetos_ativos:
-            props = propriedades_combustao(obj['nome_material'])
-            hrrpua_ponderado += obj.get('area', 0.0) * props.get('hrrpua_max', 500.0)
-        hrrpua_ponderado /= total_area_objetos
+    # Diâmetro fixo para a pluma de Heskestad (não afeta outras)
+    D_fogo = 0.5
 
-        area_ativa = Q_dot / max(hrrpua_ponderado, 1.0)
-        area_ativa = min(area_ativa, total_area_objetos)
-        area_ativa = max(area_ativa, 0.1)
-        D_calc = np.sqrt(4.0 * area_ativa / np.pi)
-        D_calc = min(D_calc, 1.0)
-
-    # Filtro passa‑baixo para o diâmetro
-    dD_dt = (D_calc - D_fogo) / TAU_D
-
-    # Escolha da função de pluma (usa o diâmetro filtrado)
+    # Escolha da função de pluma (usa o diâmetro fixo se for Heskestad)
     if modelo_pluma == 'zukoski':
         _calc_pluma = lambda Qc, z: _pluma_zukoski(Qc, z)
     elif modelo_pluma == 'mccaffrey':
@@ -150,20 +123,24 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2, modelo_
     m_dot_plume_total = _calc_pluma(Q_c, Z_int)
     m_dot_entrained = max(0.0, m_dot_plume_total - m_dot_fuel)
 
-    # Ventilação pela porta
-    porta = aberturas[0]
+    # ------------------------------------------------------------
+    # Ventilação por todas as aberturas (soma de fluxos)
+    # ------------------------------------------------------------
     rho_u = P_ATM / (R_AR * T_u)
-    fluxos_porta = calcular_fluxo_porta_duas_zonas(
-        largura=porta["dimensoes"]["x"],
-        altura_porta=porta["dimensoes"]["z"],
-        altura_interface=Z_int,
-        densidade_ar=RHO_AMB,
-        densidade_fumaca=rho_u,
-        C_d=0.68,
-        m_dot_combustivel=m_dot_fuel
-    )
-    m_dot_in = fluxos_porta["m_dot_in"]
-    m_dot_out = fluxos_porta["m_dot_out"]
+    m_dot_in = 0.0
+    m_dot_out = 0.0
+    for vent in aberturas:
+        fluxo = calcular_fluxo_porta_duas_zonas(
+            largura=vent["dimensoes"]["x"],
+            altura_porta=vent["dimensoes"]["z"],
+            altura_interface=Z_int,
+            densidade_ar=RHO_AMB,
+            densidade_fumaca=rho_u,
+            C_d=0.68,
+            m_dot_combustivel=m_dot_fuel
+        )
+        m_dot_in += fluxo["m_dot_in"]
+        m_dot_out += fluxo["m_dot_out"]
 
     # Consumo e produção de espécies
     m_dot_o2_consumido = m_dot_fuel * nu_o2
@@ -219,8 +196,8 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2, modelo_
     # Derivadas da parede (chama o módulo termica_parede)
     dT_parede_dt = derivadas_parede(T_u, T_parede, params_parede)
 
-    # As derivadas são: [massa, entalpia, O2, CO2, CO] + [N_NOS temperaturas] + [diâmetro]
-    return [dm_dt, dH_dt, dm_o2_dt, dm_co2_dt, dm_co_dt] + list(dT_parede_dt) + [dD_dt]
+    # As derivadas são: [massa, entalpia, O2, CO2, CO] + [N_NOS temperaturas]
+    return [dm_dt, dH_dt, dm_o2_dt, dm_co2_dt, dm_co_dt] + list(dT_parede_dt)
 
 
 def simular_incendio_sequencial(sala, aberturas,
@@ -231,7 +208,7 @@ def simular_incendio_sequencial(sala, aberturas,
     """
     Simulação completa com ignição sequencial.
     Retorna arrays de tempo e estados (t, y).
-    modelo_pluma : 'zukoski' ou 'heskestad'
+    modelo_pluma : 'zukoski', 'heskestad' ou 'mccaffrey'
     """
     # Dicionário para lookup da área de cada material
     area_por_material = {obj['nome_material']: obj['area'] for obj in objetos_geometria}
@@ -265,14 +242,9 @@ def simular_incendio_sequencial(sala, aberturas,
     # Inicializar todas as temperaturas da parede a T_AMB
     T_parede0 = np.full(N_NOS, T_AMB)
 
-    # Diâmetro inicial consistente com a área ativa mínima (HRR = 0)
-    area_ativa_min = 0.1   # mesmo valor usado em equacoes_sfpe
-    D_fogo0 = np.sqrt(4.0 * area_ativa_min / np.pi)
-
-    # Construir o vetor y0
+    # Construir o vetor y0 
     y0 = np.concatenate([np.array([m_u_0, H_u_0, m_o2_0, m_co2_0, m_co_0]),
-                         T_parede0,
-                         np.array([D_fogo0])])
+                         T_parede0])
 
     t_atual = 0.0
     y_atual = y0.copy()

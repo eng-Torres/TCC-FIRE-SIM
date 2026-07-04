@@ -28,5 +28,13 @@ MATERIAIS_CONSTRUCAO = {
         "espessura": 0.005,
         "h_conv": 0.02,
         "emissividade": 0.3
+    },
+    "gesso_16mm": {          # ou "gesso_cartonado" se preferires
+        "k": 2.0e-4,         # mantém
+        "rho": 800.0,        # mantém
+        "cp": 1.0,           # mantém
+        "espessura": 0.0125, # 12.5 mm (padrão)
+        "h_conv": 0.008,     # reduzido de 0.015
+        "emissividade": 0.5  # reduzida de 0.9
     }
 }

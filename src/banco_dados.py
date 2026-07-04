@@ -24,7 +24,6 @@ BANCO_MATERIAIS = {
     "espuma_poliuretano": {
         "tempo": np.array([0, 10, 20, 30, 40, 50, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480, 540, 600]),
         "hrr":   np.array([0, 20, 80, 160, 250, 320, 380, 360, 310, 250, 190, 100, 50, 25, 10, 5, 2, 0]),
-        "hrrpua_max": 800.0,  # kW/m²
         "delta_Hc": 20.0e3,   # kJ/kg (típico de PU flexível)
         "nu_o2": 2.2,         # kg O2 / kg fuel (base estequiométrica aproximada)
         "y_co2": 2.1,         # kg CO2 / kg fuel
@@ -33,7 +32,6 @@ BANCO_MATERIAIS = {
     "madeira": {
         "tempo": np.array([0, 30, 60, 90, 120, 180, 240, 300, 360, 420, 480, 540, 600]),
         "hrr":   np.array([0, 40, 100, 160, 200, 240, 230, 190, 140, 100, 60, 30, 10]),
-        "hrrpua_max": 250.0,  # kW/m²
         "delta_Hc": 16.0e3,   # kJ/kg (madeira seca)
         "nu_o2": 1.4,         # kg O2 / kg fuel
         "y_co2": 1.5,         # kg CO2 / kg fuel
@@ -42,12 +40,37 @@ BANCO_MATERIAIS = {
     "papelao": {
         "tempo": np.array([0, 10, 20, 30, 45, 60, 90, 120, 150, 180, 210, 240, 270, 300]),
         "hrr":   np.array([0, 10, 60, 140, 220, 280, 290, 240, 170, 100, 50, 20, 5, 0]),
-        "hrrpua_max": 200.0,  # kW/m²
         "delta_Hc": 18.0e3,
         "nu_o2": 1.8,
         "y_co2": 1.9,
         "y_co": 0.01
-    }
+    },
+    "cesto_lixo": {
+        "tempo": np.array([0, 200, 200.1, 600]),
+        "hrr":   np.array([52.5, 52.5, 0, 0]),
+        "delta_Hc": 20.0e3,       # kJ/kg (valor típico para papel/polietileno)
+        "nu_o2": 2.0,             # kg O2 / kg fuel
+        "y_co2": 2.0,             # kg CO2 / kg fuel
+        "y_co": 0.02,             # kg CO / kg fuel
+    },
+
+    "armchair_h": {
+        # Curva real do NIST "Arm Chair H" – substitui pelos dados do CSV se quiseres
+        "tempo": np.array([0, 30, 60, 90, 120, 180, 240, 300, 360, 420, 480, 540, 600]),
+        "hrr":   np.array([0, 100, 400, 800, 1200, 1600, 1733, 1500, 1200, 800, 400, 100, 0]),
+        "delta_Hc": 20.0e3,
+        "nu_o2": 2.2,
+        "y_co2": 2.1,
+        "y_co": 0.02,
+    },
+    "teste2_hrr_medida": {
+        "tempo": np.array([0, 240, 300, 360, 420, 450, 480, 510, 540, 600, 660, 960, 1380, 2000]),
+        "hrr":   np.array([0,   0,  35, 360,1250,1400,1450,1400,1200, 800, 460, 120,   40,    0]),
+        "delta_Hc": 20.0e3,       # valor médio (não crítico para a dinâmica térmica)
+        "nu_o2": 2.0,             # valor típico
+        "y_co2": 2.0,
+        "y_co": 0.02,
+}
 }
 
 # Parâmetros padrão para uso com a curva t² quando o material não está no banco

@@ -8,11 +8,10 @@ import matplotlib.pyplot as plt
 
 def _extrair_campos(t, y, sala, aberturas, C_P, R_AR, P_ATM):
     """Extrai as variáveis comuns a todas as saídas.
-       y: [m_u, H_u, m_o2, m_co2, m_co, T_w0, ..., T_w(N-1), D_fogo]
+       y: [m_u, H_u, m_o2, m_co2, m_co, T_w0, ..., T_w(N-1)]
     """
     m_u, H_u, m_o2, m_co2, m_co = y[:5]
     T_w = y[5]                       # temperatura da superfície (primeiro nó)
-    D_fogo = y[-1]                   # último elemento
 
     T_u = H_u / (m_u * C_P)
     T_u_celsius = T_u - 273.15
@@ -31,7 +30,6 @@ def _extrair_campos(t, y, sala, aberturas, C_P, R_AR, P_ATM):
         'Y_o2': Y_o2,
         'Y_co2': Y_co2,
         'Y_co': Y_co,
-        'D_fogo': D_fogo,
         'sala': sala,
         'aberturas': aberturas
     }
@@ -101,7 +99,6 @@ def exportar_dados(t, y, sala, aberturas, C_P, R_AR, P_ATM,
     m_co2  = np.interp(t_alvo, t, y[3])
     m_co   = np.interp(t_alvo, t, y[4])
     T_w    = np.interp(t_alvo, t, y[5])      # superfície
-    D_fogo = np.interp(t_alvo, t, y[-1])     # último elemento
 
     T_u = H_u / (m_u * C_P)
     T_u_celsius = T_u - 273.15
@@ -113,12 +110,12 @@ def exportar_dados(t, y, sala, aberturas, C_P, R_AR, P_ATM,
     Y_co2 = m_co2 / m_u
     Y_co  = m_co  / m_u
 
-    cabecalho = ("Tempo(s), Z_int(m), T_u(C), T_w(C), Y_O2, Y_CO2, Y_CO, D_fogo(m)")
+    cabecalho = ("Tempo(s), Z_int(m), T_u(C), T_w(C), Y_O2, Y_CO2, Y_CO")
     linhas = []
     for i in range(len(t_alvo)):
         linhas.append(f"{t_alvo[i]:.2f}, {Z_int[i]:.4f}, {T_u_celsius[i]:.2f}, "
                       f"{T_w_celsius[i]:.2f}, {Y_o2[i]:.6f}, "
-                      f"{Y_co2[i]:.6f}, {Y_co[i]:.6f}, {D_fogo[i]:.4f}")
+                      f"{Y_co2[i]:.6f}, {Y_co[i]:.6f}")
 
     with open(nome_ficheiro, 'w') as f:
         f.write(cabecalho + "\n")
