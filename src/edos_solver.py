@@ -19,9 +19,9 @@ from src.termica_parede import criar_parede, derivadas_parede
 # ============================================================
 # Parâmetros de simulação (ajustáveis)
 # ============================================================
-MATERIAL_PAREDE = 'concreto_normal'   # chave em MATERIAIS_CONSTRUCAO
-TAU_D = 80.0                          # constante de tempo do filtro do diâmetro [s]
-MAX_STEP = 0.05                        # passo máximo do integrador [s]
+MATERIAL_PAREDE = 'gesso_16mm'   # chave em MATERIAIS_CONSTRUCAO
+TAU_D = 20.0                          # constante de tempo do filtro do diâmetro [s]
+MAX_STEP = 0.1                        # passo máximo do integrador [s]
 PONTOS_POR_SEGUNDO = 10               # densidade do t_eval
 N_NOS = 12                             # número de nós na discretização da parede
 
@@ -74,6 +74,17 @@ def _pluma_heskestad(Q_c, z, D):
     m *= 1.0 + 0.026 * (Q_c ** (2.0 / 3.0)) / (z_eff ** (5.0 / 3.0))
     return f * m
 
+def _pluma_mccaffrey(Q_c, z):
+    """McCaffrey (1979) – vazão mássica total [kg/s]."""
+    if z <= 0.01 or Q_c <= 0.0:
+        return 0.0
+    zeta = z / (Q_c ** 0.4)          # z / Q_c^{2/5}
+    if zeta < 0.08:
+        return 0.011 * Q_c * (zeta ** 0.566)
+    elif zeta < 0.20:
+        return 0.026 * Q_c * (zeta ** 0.909)
+    else:
+        return 0.124 * Q_c * (zeta ** 1.895)
 
 def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2, modelo_pluma='zukoski'):
     """
@@ -122,6 +133,7 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2, modelo_
         area_ativa = min(area_ativa, total_area_objetos)
         area_ativa = max(area_ativa, 0.1)
         D_calc = np.sqrt(4.0 * area_ativa / np.pi)
+        D_calc = min(D_calc, 1.0)
 
     # Filtro passa‑baixo para o diâmetro
     dD_dt = (D_calc - D_fogo) / TAU_D
@@ -129,10 +141,12 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2, modelo_
     # Escolha da função de pluma (usa o diâmetro filtrado)
     if modelo_pluma == 'zukoski':
         _calc_pluma = lambda Qc, z: _pluma_zukoski(Qc, z)
+    elif modelo_pluma == 'mccaffrey':
+        _calc_pluma = lambda Qc, z: _pluma_mccaffrey(Qc, z)
     else:
         _calc_pluma = lambda Qc, z: _pluma_heskestad(Qc, z, D_fogo)
 
-    Q_c = 0.8 * Q_dot
+    Q_c = 0.7 * Q_dot
     m_dot_plume_total = _calc_pluma(Q_c, Z_int)
     m_dot_entrained = max(0.0, m_dot_plume_total - m_dot_fuel)
 
@@ -156,13 +170,14 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2, modelo_
     m_dot_co2_produzido = m_dot_fuel * y_co2
     m_dot_co_produzido  = m_dot_fuel * y_co
 
-    # Limitação por oxigénio na pluma
+    # Limitação simples pelo O2 entranhado
     m_dot_o2_disp = m_dot_entrained * Y_O2_AMB
     if m_dot_o2_consumido > m_dot_o2_disp and m_dot_o2_disp > 0:
         fator = m_dot_o2_disp / m_dot_o2_consumido
         m_dot_fuel *= fator
         Q_dot *= fator
-        Q_c = 0.8 * Q_dot
+        Q_c = 0.7 * Q_dot
+        # Recalcular a pluma e espécies
         m_dot_plume_total = _calc_pluma(Q_c, Z_int)
         m_dot_entrained = max(0.0, m_dot_plume_total - m_dot_fuel)
         m_dot_o2_consumido = m_dot_fuel * nu_o2
@@ -173,6 +188,10 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2, modelo_
     dm_o2_dt  = m_dot_entrained * Y_O2_AMB - m_dot_o2_consumido - m_dot_out * (m_o2 / m_u)
     dm_co2_dt = m_dot_entrained * Y_CO2_AMB + m_dot_co2_produzido - m_dot_out * (m_co2 / m_u)
     dm_co_dt  = m_dot_entrained * Y_CO_AMB  + m_dot_co_produzido  - m_dot_out * (m_co / m_u)
+
+    # Evitar O2 negativo
+    if m_o2 <= 0.0 and dm_o2_dt < 0.0:
+        dm_o2_dt = 0.0
 
     # Balanço de massa total
     dm_dt = m_dot_plume_total - m_dot_out
@@ -310,8 +329,24 @@ def simular_incendio_sequencial(sala, aberturas,
                 )
                 solucoes.append(sol_rest)
                 t_atual = t_final
-            break
-
+            
+    # --- Continua a simulação até t_final se ainda houver tempo restante ---
+    if t_atual < t_final:
+        t_span_rest = (t_atual, t_final)
+        num_points = max(10, int(t_span_rest[1] - t_span_rest[0]) * PONTOS_POR_SEGUNDO)
+        t_eval_rest = np.linspace(t_span_rest[0], t_span_rest[1], num_points)
+        sol_rest = solve_ivp(
+            equacoes_sfpe,
+            t_span_rest,
+            y_atual,
+            args=(sala, aberturas, objetos_ativos, crescimento_t2, modelo_pluma),
+            method='Radau',
+            max_step=MAX_STEP,
+            t_eval=t_eval_rest
+        )
+        solucoes.append(sol_rest)
+        t_atual = t_final
+    # ------------------------------------------------------------------------
     # Concatenação segura do histórico
     t_hist = [np.array([0.0])]
     y_hist = [y0.reshape(-1, 1)]
