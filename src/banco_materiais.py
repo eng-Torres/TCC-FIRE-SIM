@@ -1,40 +1,97 @@
 """
-Banco de propriedades de materiais de construção (paredes, teto, piso).
-Cada entrada é um dicionário com as propriedades térmicas necessárias
-para o modelo de parede com inércia (lumped).
+Banco de Dados de Materiais Combustíveis
+Baseado em valores típicos de ensaios de cone calorimétrico (ISO 5660) e dados da literatura.
+Referências:
+- Schartel, B., Hull, T. R. (2007). Fire and Materials, 31, 327-354.
+- SFPE Handbook, 5th Ed., Cap. 61 (Calorimetry).
+- CFAST Technical Reference Guide (NIST SP 1026), Cap. 3 (Combustion).
 """
 
-MATERIAIS_CONSTRUCAO = {
-    "concreto_normal": {
-        "k": 1.75e-3,        # kW/(m·K)
-        "rho": 2200.0,       # kg/m³
-        "cp": 1.0,           # kJ/(kg·K)
-        "espessura": 0.15,   # m
-        "h_conv": 0.015,     # kW/(m²·K)
-        "emissividade": 0.9
+import numpy as np
+
+# Banco de dados contendo:
+# - 'tempo': array de tempo [s]
+# - 'hrr': Heat Release Rate [kW] (para um objeto típico)
+# - 'delta_Hc': calor de combustão efetivo [kJ/kg]
+# - 'nu_o2': consumo estequiométrico de O2 [kg O2 / kg combustível]
+# - 'y_co2': rendimento mássico de CO2 [kg CO2 / kg combustível]
+# - 'y_co': rendimento mássico de CO [kg CO / kg combustível]
+# Nota: os arrays de tempo/HRR foram gerados para representar um objeto inteiro,
+# e não por unidade de área, para simplificar a integração inicial.
+# Se desejar escalonar pela área, modifique a função de cálculo.
+
+BANCO_MATERIAIS = {
+    "espuma_poliuretano": {
+        "tempo": np.array([0, 10, 20, 30, 40, 50, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480, 540, 600]),
+        "hrr":   np.array([0, 20, 80, 160, 250, 320, 380, 360, 310, 250, 190, 100, 50, 25, 10, 5, 2, 0]),
+        "delta_Hc": 20.0e3,   # kJ/kg (típico de PU flexível)
+        "nu_o2": 2.2,         # kg O2 / kg fuel (base estequiométrica aproximada)
+        "y_co2": 2.1,         # kg CO2 / kg fuel
+        "y_co": 0.02          # kg CO / kg fuel (combustão bem ventilada)
     },
-    "gesso_cartonado": {
-        "k": 2.0e-4,
-        "rho": 800.0,
-        "cp": 1.0,
-        "espessura": 0.0125,
-        "h_conv": 0.015,
-        "emissividade": 0.9
+    "madeira": {
+        "tempo": np.array([0, 30, 60, 90, 120, 180, 240, 300, 360, 420, 480, 540, 600]),
+        "hrr":   np.array([0, 40, 100, 160, 200, 240, 230, 190, 140, 100, 60, 30, 10]),
+        "delta_Hc": 16.0e3,   # kJ/kg (madeira seca)
+        "nu_o2": 1.4,         # kg O2 / kg fuel
+        "y_co2": 1.5,         # kg CO2 / kg fuel
+        "y_co": 0.005
     },
-    "aco": {
-        "k": 45.0e-3,        # kW/(m·K)  (45 W/mK)
-        "rho": 7850.0,
-        "cp": 0.5,
-        "espessura": 0.005,
-        "h_conv": 0.02,
-        "emissividade": 0.3
+    "papelao": {
+        "tempo": np.array([0, 10, 20, 30, 45, 60, 90, 120, 150, 180, 210, 240, 270, 300]),
+        "hrr":   np.array([0, 10, 60, 140, 220, 280, 290, 240, 170, 100, 50, 20, 5, 0]),
+        "delta_Hc": 18.0e3,
+        "nu_o2": 1.8,
+        "y_co2": 1.9,
+        "y_co": 0.01
     },
-    "gesso_16mm": {          # ou "gesso_cartonado" se preferires
-        "k": 2.0e-4,         # mantém
-        "rho": 800.0,        # mantém
-        "cp": 1.0,           # mantém
-        "espessura": 0.0125, # 12.5 mm (padrão)
-        "h_conv": 0.008,     # reduzido de 0.015
-        "emissividade": 0.5  # reduzida de 0.9
-    }
+    "cesto_lixo": {
+        "tempo": np.array([0, 200, 200.1, 600]),
+        "hrr":   np.array([52.5, 52.5, 0, 0]),
+        "delta_Hc": 20.0e3,       # kJ/kg (valor típico para papel/polietileno)
+        "nu_o2": 2.0,             # kg O2 / kg fuel
+        "y_co2": 2.0,             # kg CO2 / kg fuel
+        "y_co": 0.02,             # kg CO / kg fuel
+    },
+
+    "armchair_h": {
+        # Curva real do NIST "Arm Chair H" – substitui pelos dados do CSV se quiseres
+        "tempo": np.array([0, 30, 60, 90, 120, 180, 240, 300, 360, 420, 480, 540, 600]),
+        "hrr":   np.array([0, 100, 400, 800, 1200, 1600, 1733, 1500, 1200, 800, 400, 100, 0]),
+        "delta_Hc": 20.0e3,
+        "nu_o2": 2.2,
+        "y_co2": 2.1,
+        "y_co": 0.02,
+    },
+    "teste2_hrr_medida": {
+        "tempo": np.array([0, 240, 300, 360, 420, 450, 480, 510, 540, 600, 660, 960, 1380, 2000]),
+        "hrr":   np.array([0,   0,  35, 360,1250,1400,1450,1400,1200, 800, 460, 120,   40,    0]),
+        "delta_Hc": 20.0e3,       # valor médio (não crítico para a dinâmica térmica)
+        "nu_o2": 2.0,             # valor típico
+        "y_co2": 2.0,
+        "y_co": 0.02,
 }
+}
+
+# Parâmetros padrão para uso com a curva t² quando o material não está no banco
+ALFA_NFPA = {
+    "lento": 0.00293,
+    "medio": 0.01172,
+    "rapido": 0.0469,
+    "ultra_rapido": 0.1876
+}
+
+# Propriedades padrão de combustão para curva t² (material genérico)
+COMBUSTAO_PADRAO = {
+    "delta_Hc": 18.0e3,      # kJ/kg
+    "nu_o2": 1.8,            # kg O2 / kg fuel
+    "y_co2": 2.0,
+    "y_co": 0.01
+}
+
+def obter_dados_material(nome_material: str) -> dict:
+    """
+    Retorna os dados de um material do banco de dados.
+    Se não existir, retorna None (para usar curva t²).
+    """
+    return BANCO_MATERIAIS.get(nome_material, None)

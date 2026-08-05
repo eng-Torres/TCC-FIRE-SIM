@@ -13,7 +13,7 @@ from scipy.integrate import solve_ivp
 from src.fluidodinamica import calcular_fluxo_porta_duas_zonas
 from src.combustao import calcular_hrr_total_e_propriedades, propriedades_combustao
 from src.constantes import *                      # constantes físicas universais
-from src.banco_materiais import MATERIAIS_CONSTRUCAO
+from banco_construcao import MATERIAIS_CONSTRUCAO
 from src.termica_parede import criar_parede, derivadas_parede
 
 # ============================================================
