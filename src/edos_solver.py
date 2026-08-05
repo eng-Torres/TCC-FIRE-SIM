@@ -55,15 +55,43 @@ def _pluma_zukoski(Q_c, z):
         return 0.0
     return 0.071 * (Q_c ** (1.0 / 3.0)) * (z ** (5.0 / 3.0))
 
-def _pluma_heskestad(Q_c, z, D):
-    """Heskestad (1984) – formulação clássica, sem transição suave."""
+def _pluma_heskestad(Q_dot_total, Q_c, z, D, T_inf=293.15, cp=1.005, rho_inf=1.2, g=9.81):
+    """
+    Heskestad plume entrainment – CFAST Eqs. (3.16)-(3.18).
+    Usa Q_dot_total para a origem virtual e altura de chama,
+    e Q_c para o termo convectivo da pluma.
+    """
     if z <= 0.01 or Q_c <= 0.0:
         return 0.0
-    z0 = -1.02 * D + 0.083 * (Q_c ** 0.4)
-    z_eff = max(z - z0, 0.01)
-    m = 0.071 * (Q_c ** (1.0 / 3.0)) * (z_eff ** (5.0 / 3.0))
-    m *= 1.0 + 0.026 * (Q_c ** (2.0 / 3.0)) / (z_eff ** (5.0 / 3.0))
-    return m
+
+    # Parâmetros adimensionais
+    Q_star = Q_dot_total / (rho_inf * cp * T_inf * np.sqrt(g * D) * D**2)
+    
+    # Altura média da chama (Eq. 3.18)
+    L = D * (-1.02 + 3.7 * Q_star**(2/5))
+    L = max(0.01, L)   # não pode ser negativo ou zero
+
+    # Origem virtual (Eq. 3.17) – note que usa Q_dot_total
+    z0 = D * (-1.02 + 1.4 * Q_star**(2/5))
+
+    # Constante comum
+    const = 0.196 * (g * rho_inf**2 / (cp * T_inf))**(1/3)
+
+    if z < L:
+        # Abaixo da altura da chama: relação linear (Eq. 3.18)
+        # Calcula o entrainment na altura L
+        z_eff_L = max(L - z0, 0.01)
+        m_e_L = const * Q_c**(1/3) * z_eff_L**(5/3)
+        m_e_L *= 1.0 + (2.9 * Q_c**(2/3)) / ((np.sqrt(g) * cp * rho_inf * T_inf)**(2/3) * z_eff_L**(5/3))
+        # Entrainment linear abaixo de L
+        m_e = m_e_L * (z / L)
+    else:
+        # Acima da altura da chama: Eq. (3.16) completa
+        z_eff = max(z - z0, 0.01)
+        m_e = const * Q_c**(1/3) * z_eff**(5/3)
+        m_e *= 1.0 + (2.9 * Q_c**(2/3)) / ((np.sqrt(g) * cp * rho_inf * T_inf)**(2/3) * z_eff**(5/3))
+
+    return m_e
 
 def _pluma_mccaffrey(Q_c, z):
     """McCaffrey (1979) – vazão mássica total [kg/s]."""
@@ -117,7 +145,7 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, crescimento_t2, modelo_
     elif modelo_pluma == 'mccaffrey':
         _calc_pluma = lambda Qc, z: _pluma_mccaffrey(Qc, z)
     else:
-        _calc_pluma = lambda Qc, z: _pluma_heskestad(Qc, z, D_fogo)
+        _calc_pluma = lambda Qc, z: _pluma_heskestad(Q_dot, Q_c, z, D_fogo)
 
     Q_c = 0.7 * Q_dot
     m_dot_plume_total = _calc_pluma(Q_c, Z_int)
@@ -230,7 +258,7 @@ def simular_incendio_sequencial(sala, aberturas,
 
     # Condições iniciais
     V_u_0 = 0.01
-    delta_T = 0.1
+    delta_T = 0.0
     T_u0 = T_AMB + delta_T
     rho_u0 = P_ATM / (R_AR * T_u0)
     m_u_0 = rho_u0 * V_u_0

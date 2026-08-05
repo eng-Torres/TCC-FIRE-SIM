@@ -11,7 +11,7 @@ from src.outputs import plotar_graficos, exportar_dados
 # Escolha do cenário (pode vir de input() se preferir)
 # ============================================================
 CENARIO = "teste2_1991"   # opções: "teste2_1991", "quarto_padrao"
-MODO_SAIDA = 'plot'       # 'plot' ou 'csv'
+MODO_SAIDA = 'csv'       # 'plot' ou 'csv'
 
 def configurar_cenario(nome: str):
     """
@@ -80,9 +80,12 @@ def rodar_teste():
     elif MODO_SAIDA == 'csv':
         nome_ficheiro = f"resultados_{CENARIO}_{modelo_pluma}.csv"
         exportar_dados(t, y, cfg['sala'], cfg['aberturas'],
-                       C_P, R_AR, P_ATM,
-                       nome_ficheiro=nome_ficheiro, dt_print=10.0,
-                       titulo=cfg['titulo'])
+                   C_P, R_AR, P_ATM,
+                   objeto_inicial=cfg['objeto_inicial'],
+                   outros_objetos=cfg['outros_materiais'],
+                   objetos_geometria=cfg['objetos_geometria'],
+                   nome_ficheiro=nome_ficheiro, dt_print=10.0,
+                   titulo=cfg['titulo'])
     else:
         print("Modo de saída desconhecido. Use 'plot' ou 'csv'.")
 

@@ -9,8 +9,8 @@ R_AR = 0.287         # kJ/(kg·K) – constante do gás para o ar
 P_ATM = 101.325      # kPa – pressão atmosférica padrão
 
 # Condições ambiente de referência
-T_AMB = 293.15       # K (20 °C)
-RHO_AMB = 1.2        # kg/m³ – densidade do ar ambiente
+T_AMB = 300.15       # K (27 °C) (padrão do CFAST)
+RHO_AMB = 1.176       # kg/m³ – densidade do ar ambiente (padrão do CFAST)
 
 # Frações mássicas no ar ambiente
 Y_O2_AMB = 0.23

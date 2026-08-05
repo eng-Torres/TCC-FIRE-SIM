@@ -5,6 +5,9 @@ Compatível com o modelo de parede de N nós (índice 5 = superfície).
 """
 import numpy as np
 import matplotlib.pyplot as plt
+from src.fluidodinamica import calcular_fluxo_porta_duas_zonas
+from src.combustao import calcular_hrr_total_e_propriedades
+from src.constantes import RHO_AMB, Y_O2_AMB, Y_CO2_AMB, Y_CO_AMB, T_AMB
 
 def _calcular_campos(t, y, sala, C_P, R_AR, P_ATM):
     """
@@ -33,6 +36,51 @@ def _calcular_campos(t, y, sala, C_P, R_AR, P_ATM):
         'Y_co2': Y_co2,
         'Y_co': Y_co,
     }
+    
+def _calcular_fluxos(t, y, sala, aberturas, objetos_ativos, C_P, R_AR, P_ATM, C_d=0.68):
+    """
+    Calcula m_dot_in e m_dot_out ao longo do tempo a partir do estado y.
+    """
+    
+
+    n = len(t)
+    m_dot_in_arr = np.zeros(n)
+    m_dot_out_arr = np.zeros(n)
+
+    for i in range(n):
+        m_u = y[0, i] if y.ndim == 2 else y[0]
+        H_u = y[1, i] if y.ndim == 2 else y[1]
+        m_u = max(m_u, 0.001)
+        T_u = H_u / (m_u * C_P)
+        T_u = max(T_u, 200.0)          # consistente com o solver
+        V_u = (m_u * R_AR * T_u) / P_ATM
+        Z_int = sala["altura_z"] - V_u / sala["area_piso"]
+        Z_int = max(Z_int, 0.0)
+        rho_u = P_ATM / (R_AR * T_u)
+
+        # Obter propriedades do fogo no instante t[i] (objetos_ativos é uma lista de dicionários)
+        Q_dot, m_dot_fuel, _, _, _, _ = calcular_hrr_total_e_propriedades(t[i], objetos_ativos)
+
+        # Somar fluxos de todas as aberturas
+        m_in_tot = 0.0
+        m_out_tot = 0.0
+        for vent in aberturas:
+            fluxo = calcular_fluxo_porta_duas_zonas(
+                largura=vent["dimensoes"]["x"],
+                altura_porta=vent["dimensoes"]["z"],
+                altura_interface=Z_int,
+                densidade_ar=RHO_AMB,
+                densidade_fumaca=rho_u,
+                C_d=C_d,
+                m_dot_combustivel=m_dot_fuel
+            )
+            m_in_tot += fluxo["m_dot_in"]
+            m_out_tot += fluxo["m_dot_out"]
+
+        m_dot_in_arr[i] = m_in_tot
+        m_dot_out_arr[i] = m_out_tot
+
+    return m_dot_in_arr, m_dot_out_arr
 
 def plotar_graficos(t, y, sala, aberturas, C_P, R_AR, P_ATM, titulo="Simulação de Incêndio"):
     """Gera os quatro gráficos padrão no ecrã."""
@@ -85,25 +133,46 @@ def plotar_graficos(t, y, sala, aberturas, C_P, R_AR, P_ATM, titulo="Simulação
     plt.show()
 
 def exportar_dados(t, y, sala, aberturas, C_P, R_AR, P_ATM,
+                   objeto_inicial=None, outros_objetos=None,
+                   objetos_geometria=None,
                    nome_ficheiro="resultados.csv", dt_print=10.0,
                    titulo="Simulação de Incêndio"):
-    """
-    Escreve as variáveis de estado num ficheiro CSV, amostradas de dt_print em dt_print segundos.
-    O parâmetro 'titulo' é incluído como comentário no cabeçalho, mas não afeta os dados.
-    """
     t_alvo = np.arange(0.0, t[-1] + dt_print, dt_print)
 
-    # Interpola os valores para os instantes desejados
+    # Interpola estado
     y_interp = np.array([np.interp(t_alvo, t, y[i]) for i in range(y.shape[0])])
     dados = _calcular_campos(t_alvo, y_interp, sala, C_P, R_AR, P_ATM)
 
-    cabecalho = f"# Cenário: {titulo}\nTempo(s), Z_int(m), T_u(C), T_w(C), Y_O2, Y_CO2, Y_CO"
+    # --- NOVO: Calcular vazões nos instantes de saída ---
+    # Prepara lista de objetos ativos (igual ao inicio da simulação)
+    if objeto_inicial is not None:
+        area_por_material = {obj['nome_material']: obj['area'] for obj in objetos_geometria}
+        nome_inicial = objeto_inicial['nome_material']
+        area_inicial = area_por_material.get(nome_inicial, 2.8)
+        objetos_ativos = [{'nome_material': nome_inicial, 't_ign': 0.0, 'area': area_inicial}]
+        if outros_objetos:
+            for mat in outros_objetos:
+                nome = mat['nome_material']
+                area = area_por_material.get(nome, 1.0)
+                objetos_ativos.append({'nome_material': nome, 't_ign': mat.get('T_ign', 0.0), 'area': area})
+        # Calcular fluxos nos tempos alvo
+        m_dot_in_arr, m_dot_out_arr = _calcular_fluxos(
+            t_alvo, y_interp, sala, aberturas, objetos_ativos,
+            C_P, R_AR, P_ATM, C_d=0.68)
+    else:
+        m_dot_in_arr = np.zeros_like(t_alvo)
+        m_dot_out_arr = np.zeros_like(t_alvo)
+
+    # Cabeçalho com as novas colunas
+    cabecalho = (f"# Cenário: {titulo}\n"
+                 "Tempo(s), Z_int(m), T_u(C), T_w(C), Y_O2, Y_CO2, Y_CO, m_dot_in(kg/s), m_dot_out(kg/s)")
     linhas = []
     for i in range(len(t_alvo)):
         linhas.append(
             f"{t_alvo[i]:.2f}, {dados['Z_int'][i]:.4f}, {dados['T_u_celsius'][i]:.2f}, "
             f"{dados['T_w_celsius'][i]:.2f}, {dados['Y_o2'][i]:.6f}, "
-            f"{dados['Y_co2'][i]:.6f}, {dados['Y_co'][i]:.6f}"
+            f"{dados['Y_co2'][i]:.6f}, {dados['Y_co'][i]:.6f}, "
+            f"{m_dot_in_arr[i]:.6f}, {m_dot_out_arr[i]:.6f}"
         )
 
     with open(nome_ficheiro, 'w') as f:
