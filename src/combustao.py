@@ -5,7 +5,7 @@ Suporta curvas de materiais reais (cone calorimétrico) e o modelo t² da NFPA.
 """
 
 import numpy as np
-from banco_materiais import obter_dados_material, ALFA_NFPA, COMBUSTAO_PADRAO
+from src.banco_materiais import obter_dados_material, ALFA_NFPA, COMBUSTAO_PADRAO
 
 def calcular_hrr(tempo_s: float, nome_material: str = "generico",
                  crescimento_t2: str = "medio") -> float:
