@@ -11,7 +11,7 @@ from src.outputs import plotar_graficos, exportar_dados
 # Escolha do cenário (pode vir de input() se preferir)
 # ============================================================
 CENARIO = "teste2_1991"   # opções: "teste2_1991", "quarto_padrao"
-MODO_SAIDA = 'plot'       # 'plot' ou 'csv'
+MODO_SAIDA = 'csv'       # 'plot' ou 'csv'
 
 def configurar_cenario(nome: str):
     """

@@ -29,24 +29,18 @@ o2_exp_raw = pd.to_numeric(df_exp[IDX_O2], errors='coerce').values
 co2_exp_raw = pd.to_numeric(df_exp[IDX_CO2], errors='coerce').values
 
 # ---------- Extração dos dados CFAST (últimas 6 colunas) ----------
-# As últimas 6 colunas são: Time(min), Temp(°C), Height(m), Pressure, O2(%), CO2(%)
-cfast_cols = df_exp.iloc[:, -6:]  # Pega as 6 últimas colunas
-
+cfast_cols = df_exp.iloc[:, -6:]
 t_cfast_min = pd.to_numeric(cfast_cols.iloc[:, 0], errors='coerce').values
 t_up_cfast = pd.to_numeric(cfast_cols.iloc[:, 1], errors='coerce').values
 z_cfast = pd.to_numeric(cfast_cols.iloc[:, 2], errors='coerce').values
-# Coluna 3 é Pressure (ignoramos)
 o2_cfast_perc = pd.to_numeric(cfast_cols.iloc[:, 4], errors='coerce').values
 co2_cfast_perc = pd.to_numeric(cfast_cols.iloc[:, 5], errors='coerce').values
 
-# Converter tempo de minutos para segundos
 t_cfast = t_cfast_min * 60.0
-
-# Converter O2 e CO2 de % para fração (0-1)
 o2_cfast = o2_cfast_perc / 100.0
 co2_cfast = co2_cfast_perc / 100.0
 
-# Se os experimentais estiverem em %, converter também
+# Converter experimentais para fração e Celsius se necessário
 if np.nanmax(o2_exp_raw) > 1.0:
     print("O2 experimental em porcentagem. Dividindo por 100.")
     o2_exp = o2_exp_raw / 100.0
@@ -59,45 +53,34 @@ if np.nanmax(co2_exp_raw) > 1.0:
 else:
     co2_exp = co2_exp_raw
 
-# Se a temperatura experimental estiver em Kelvin (>100), converter para Celsius
 if np.nanmax(t_up_exp_raw) > 100:
     print("TEMPUP experimental em Kelvin. Convertendo para Celsius.")
     t_up_exp = t_up_exp_raw - 273.15
 else:
     t_up_exp = t_up_exp_raw
 
-## Verificação rápida
-#print("\n=== PRIMEIROS VALORES CORRIGIDOS ===")
-#print(f"Tempo experimental (s): {t_exp[:5]}")
-#print(f"Tempo CFAST (s): {t_cfast[:5]}")
-#print(f"T_up CFAST (°C): {t_up_cfast[:5]}")
-#print(f"Z CFAST (m): {z_cfast[:5]}")
-#print(f"O2 CFAST (fração): {o2_cfast[:5]}")
-#print(f"CO2 CFAST (fração): {co2_cfast[:5]}")
-
 # =============================================================================
-# 2. Leitura das simulações
+# 2. Leitura das simulações (Heskestad, Zukoski, McCaffrey)
 # =============================================================================
 def load_simulacao(nome):
+    # Lê arquivo, ignorando linhas que começam com '#'
     df = pd.read_csv(nome, comment='#')
     df.columns = df.columns.str.strip()
+    # As primeiras colunas são: Tempo(s), Z_int(m), T_u(C), T_w(C), Y_O2, Y_CO2, ...
+    # Pegamos as 6 primeiras
     t = df.iloc[:, 0].values
     z = df.iloc[:, 1].values
     T_up = df.iloc[:, 2].values
     T_low = df.iloc[:, 3].values
-    if df.shape[1] >= 5:
-        o2 = df.iloc[:, 4].values
-    else:
-        o2 = np.full_like(t, np.nan)
-    if df.shape[1] >= 6:
-        co2 = df.iloc[:, 5].values
-    else:
-        co2 = np.full_like(t, np.nan)
+    o2 = df.iloc[:, 4].values
+    co2 = df.iloc[:, 5].values
     return t, z, T_up, T_low, o2, co2
 
 t_hes, z_hes, Tup_hes, Tlow_hes, o2_hes, co2_hes = load_simulacao("resultados_teste2_1991_heskestad.csv")
 t_zuk, z_zuk, Tup_zuk, Tlow_zuk, o2_zuk, co2_zuk = load_simulacao("resultados_teste2_1991_zukoski.csv")
-print(f"\nHeskestad: {len(t_hes)} pontos, Zukoski: {len(t_zuk)} pontos")
+t_mcc, z_mcc, Tup_mcc, Tlow_mcc, o2_mcc, co2_mcc = load_simulacao("resultados_teste2_1991_mccaffrey.csv")
+
+print(f"Heskestad: {len(t_hes)} pts, Zukoski: {len(t_zuk)} pts, McCaffrey: {len(t_mcc)} pts")
 
 # =============================================================================
 # 3. Interpolação para grid comum (0 a 2070 s)
@@ -135,6 +118,11 @@ Z_zuk_i = interp_clean(t_zuk, z_zuk, t_grid)
 O2_zuk_i = interp_clean(t_zuk, o2_zuk, t_grid)
 CO2_zuk_i = interp_clean(t_zuk, co2_zuk, t_grid)
 
+Tup_mcc_i = interp_clean(t_mcc, Tup_mcc, t_grid)
+Z_mcc_i = interp_clean(t_mcc, z_mcc, t_grid)
+O2_mcc_i = interp_clean(t_mcc, o2_mcc, t_grid)
+CO2_mcc_i = interp_clean(t_mcc, co2_mcc, t_grid)
+
 # =============================================================================
 # 4. Métricas de erro
 # =============================================================================
@@ -154,19 +142,23 @@ def metrics(y_sim, y_ref, nome):
 print("\n=== MÉTRICAS  ===\n")
 metrics(Tup_hes_i, Tup_exp_i, "Heskestad - T_up")
 metrics(Tup_zuk_i, Tup_exp_i, "Zukoski - T_up")
+metrics(Tup_mcc_i, Tup_exp_i, "McCaffrey - T_up")
 metrics(Z_hes_i, Z_exp_i, "Heskestad - Z_int")
 metrics(Z_zuk_i, Z_exp_i, "Zukoski - Z_int")
+metrics(Z_mcc_i, Z_exp_i, "McCaffrey - Z_int")
 metrics(O2_hes_i, O2_exp_i, "Heskestad - O2")
 metrics(O2_zuk_i, O2_exp_i, "Zukoski - O2")
+metrics(O2_mcc_i, O2_exp_i, "McCaffrey - O2")
 metrics(CO2_hes_i, CO2_exp_i, "Heskestad - CO2")
 metrics(CO2_zuk_i, CO2_exp_i, "Zukoski - CO2")
+metrics(CO2_mcc_i, CO2_exp_i, "McCaffrey - CO2")
 
 # =============================================================================
 # 5. Gráficos
 # =============================================================================
 plt.style.use('seaborn-v0_8-darkgrid')
 
-# 5.1 HRR
+# 5.1 HRR (igual)
 plt.figure(figsize=(10,5))
 plt.plot(t_grid, HRR_exp_i, 'k-', label='Experimental (Peacock)')
 plt.xlabel('Tempo (s)'); plt.ylabel('HRR (kW)')
@@ -174,51 +166,55 @@ plt.title('HRR – Teste 2')
 plt.legend(); plt.grid(); plt.tight_layout()
 plt.savefig('validacao_hrr.png', dpi=300); plt.close()
 
-# 5.2 Temperatura
+# 5.2 Temperatura – adiciona McCaffrey em verde
 plt.figure(figsize=(10,5))
 plt.plot(t_grid, Tup_cfast_i, 'ko', markersize=2, label='CFAST')
 plt.plot(t_grid, Tup_exp_i, 'm.', markersize=1, label='Experimental')
 plt.plot(t_hes, Tup_hes, 'r-', lw=1.5, label='Heskestad')
 plt.plot(t_zuk, Tup_zuk, 'b-', lw=1.5, label='Zukoski')
+plt.plot(t_mcc, Tup_mcc, 'g-', lw=1.5, label='McCaffrey')
 plt.xlabel('Tempo (s)'); plt.ylabel('Temperatura (°C)')
 plt.title('Temperatura da Camada Superior')
 plt.legend(); plt.grid(); plt.tight_layout()
 plt.savefig('validacao_temperatura.png', dpi=300); plt.close()
 
-# 5.3 Interface
+# 5.3 Interface – McCaffrey em verde
 plt.figure(figsize=(10,5))
 plt.plot(t_grid, Z_cfast_i, 'ko', markersize=2, label='CFAST')
 plt.plot(t_grid, Z_exp_i, 'm.', markersize=1, label='Experimental')
 plt.plot(t_hes, z_hes, 'r-', lw=1.5, label='Heskestad')
 plt.plot(t_zuk, z_zuk, 'b-', lw=1.5, label='Zukoski')
+plt.plot(t_mcc, z_mcc, 'g-', lw=1.5, label='McCaffrey')
 plt.xlabel('Tempo (s)'); plt.ylabel('Altura da interface (m)')
 plt.title('Altura da Interface')
 plt.legend(); plt.grid(); plt.tight_layout()
 plt.savefig('validacao_interface.png', dpi=300); plt.close()
 
-# 5.4 O2
+# 5.4 O2 – McCaffrey em verde
 plt.figure(figsize=(10,5))
 plt.plot(t_grid, O2_cfast_i*100, 'ko', markersize=2, label='CFAST')
 plt.plot(t_grid, O2_exp_i*100, 'm.', markersize=1, label='Experimental')
 plt.plot(t_hes, o2_hes*100, 'r-', lw=1.5, label='Heskestad')
 plt.plot(t_zuk, o2_zuk*100, 'b-', lw=1.5, label='Zukoski')
+plt.plot(t_mcc, o2_mcc*100, 'g-', lw=1.5, label='McCaffrey')
 plt.xlabel('Tempo (s)'); plt.ylabel('O₂ (%)')
 plt.title('Fração mássica de Oxigênio')
 plt.legend(); plt.grid(); plt.tight_layout()
 plt.savefig('validacao_o2.png', dpi=300); plt.close()
 
-# 5.5 CO2
+# 5.5 CO2 – McCaffrey em verde
 plt.figure(figsize=(10,5))
 plt.plot(t_grid, CO2_cfast_i*100, 'ko', markersize=2, label='CFAST')
 plt.plot(t_grid, CO2_exp_i*100, 'm.', markersize=1, label='Experimental')
 plt.plot(t_hes, co2_hes*100, 'r-', lw=1.5, label='Heskestad')
 plt.plot(t_zuk, co2_zuk*100, 'b-', lw=1.5, label='Zukoski')
+plt.plot(t_mcc, co2_mcc*100, 'g-', lw=1.5, label='McCaffrey')
 plt.xlabel('Tempo (s)'); plt.ylabel('CO₂ (%)')
 plt.title('Fração mássica de Dióxido de Carbono')
 plt.legend(); plt.grid(); plt.tight_layout()
 plt.savefig('validacao_co2.png', dpi=300); plt.close()
 
-# 5.6 Painel completo 
+# 5.6 Painel completo com todas as plumas
 fig, axs = plt.subplots(5, 1, figsize=(10, 15), sharex=True)
 
 # HRR
@@ -232,15 +228,17 @@ axs[1].plot(t_grid, Tup_cfast_i, 'ko', markersize=1, label='CFAST')
 axs[1].plot(t_grid, Tup_exp_i, 'm.', markersize=1, label='Experimental')
 axs[1].plot(t_hes, Tup_hes, 'r-', lw=1, label='Heskestad')
 axs[1].plot(t_zuk, Tup_zuk, 'b-', lw=1, label='Zukoski')
+axs[1].plot(t_mcc, Tup_mcc, 'g-', lw=1, label='McCaffrey')
 axs[1].set_ylabel('T (°C)')
 axs[1].legend()
 axs[1].grid()
 
-# Altura da interface 
+# Interface 
 axs[2].plot(t_grid, Z_cfast_i, 'ko', markersize=1, label='CFAST')
 axs[2].plot(t_grid, Z_exp_i, 'm.', markersize=1, label='Experimental')
 axs[2].plot(t_hes, z_hes, 'r-', lw=1, label='Heskestad')
 axs[2].plot(t_zuk, z_zuk, 'b-', lw=1, label='Zukoski')
+axs[2].plot(t_mcc, z_mcc, 'g-', lw=1, label='McCaffrey')
 axs[2].set_ylabel('Z_int (m)')
 axs[2].legend()
 axs[2].grid()
@@ -250,6 +248,7 @@ axs[3].plot(t_grid, O2_cfast_i*100, 'ko', markersize=1, label='CFAST')
 axs[3].plot(t_grid, O2_exp_i*100, 'm.', markersize=1, label='Experimental')
 axs[3].plot(t_hes, o2_hes*100, 'r-', lw=1, label='Heskestad')
 axs[3].plot(t_zuk, o2_zuk*100, 'b-', lw=1, label='Zukoski')
+axs[3].plot(t_mcc, o2_mcc*100, 'g-', lw=1, label='McCaffrey')
 axs[3].set_ylabel('O₂ (%)')
 axs[3].legend()
 axs[3].grid()
@@ -259,6 +258,7 @@ axs[4].plot(t_grid, CO2_cfast_i*100, 'ko', markersize=1, label='CFAST')
 axs[4].plot(t_grid, CO2_exp_i*100, 'm.', markersize=1, label='Experimental')
 axs[4].plot(t_hes, co2_hes*100, 'r-', lw=1, label='Heskestad')
 axs[4].plot(t_zuk, co2_zuk*100, 'b-', lw=1, label='Zukoski')
+axs[4].plot(t_mcc, co2_mcc*100, 'g-', lw=1, label='McCaffrey')
 axs[4].set_xlabel('Tempo (s)')
 axs[4].set_ylabel('CO₂ (%)')
 axs[4].legend()
