@@ -136,7 +136,7 @@ O2_zuk_i = interp_clean(t_zuk, o2_zuk, t_grid)
 CO2_zuk_i = interp_clean(t_zuk, co2_zuk, t_grid)
 
 # =============================================================================
-# 4. Métricas de erro (comparação com CFAST)
+# 4. Métricas de erro
 # =============================================================================
 def metrics(y_sim, y_ref, nome):
     mask = ~np.isnan(y_sim) & ~np.isnan(y_ref)
@@ -152,14 +152,14 @@ def metrics(y_sim, y_ref, nome):
     print(f"{nome}: RMSE={rmse:.2f}, MAE={mae:.2f}, MAPE={mape:.2f}%, Max={max_err:.2f}")
 
 print("\n=== MÉTRICAS  ===\n")
-metrics(Tup_hes_i, Tup_cfast_i, "Heskestad - T_up")
-metrics(Tup_zuk_i, Tup_cfast_i, "Zukoski - T_up")
-metrics(Z_hes_i, Z_cfast_i, "Heskestad - Z_int")
-metrics(Z_zuk_i, Z_cfast_i, "Zukoski - Z_int")
-metrics(O2_hes_i, O2_cfast_i, "Heskestad - O2")
-metrics(O2_zuk_i, O2_cfast_i, "Zukoski - O2")
-metrics(CO2_hes_i, CO2_cfast_i, "Heskestad - CO2")
-metrics(CO2_zuk_i, CO2_cfast_i, "Zukoski - CO2")
+metrics(Tup_hes_i, Tup_exp_i, "Heskestad - T_up")
+metrics(Tup_zuk_i, Tup_exp_i, "Zukoski - T_up")
+metrics(Z_hes_i, Z_exp_i, "Heskestad - Z_int")
+metrics(Z_zuk_i, Z_exp_i, "Zukoski - Z_int")
+metrics(O2_hes_i, O2_exp_i, "Heskestad - O2")
+metrics(O2_zuk_i, O2_exp_i, "Zukoski - O2")
+metrics(CO2_hes_i, CO2_exp_i, "Heskestad - CO2")
+metrics(CO2_zuk_i, CO2_exp_i, "Zukoski - CO2")
 
 # =============================================================================
 # 5. Gráficos

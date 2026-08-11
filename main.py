@@ -11,7 +11,7 @@ from src.outputs import plotar_graficos, exportar_dados
 # Escolha do cenário (pode vir de input() se preferir)
 # ============================================================
 CENARIO = "teste2_1991"   # opções: "teste2_1991", "quarto_padrao"
-MODO_SAIDA = 'csv'       # 'plot' ou 'csv'
+MODO_SAIDA = 'plot'       # 'plot' ou 'csv'
 
 def configurar_cenario(nome: str):
     """
@@ -56,7 +56,7 @@ def configurar_cenario(nome: str):
 
 
 def rodar_teste():
-    modelo_pluma = 'zukoski'  # 'zukoski', 'mccaffrey', 'heskestad'
+    modelo_pluma = 'mccaffrey'  # 'zukoski', 'mccaffrey', 'heskestad'
 
     cfg = configurar_cenario(CENARIO)
     print(f"Cenário: {CENARIO}  |  Pluma: {modelo_pluma}")
