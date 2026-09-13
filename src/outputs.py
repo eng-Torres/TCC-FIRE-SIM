@@ -9,6 +9,7 @@ from src.fluidodinamica import calcular_fluxo_porta_duas_zonas
 from src.combustao import calcular_hrr_total_e_propriedades
 from src.constantes import RHO_AMB, Y_O2_AMB, Y_CO2_AMB, Y_CO_AMB, T_AMB
 
+
 def _calcular_campos(t, y, sala, C_P, R_AR, P_ATM):
     """
     Calcula as grandezas derivadas (temperatura, altura da interface,
@@ -16,9 +17,9 @@ def _calcular_campos(t, y, sala, C_P, R_AR, P_ATM):
     y: [m_u, H_u, m_o2, m_co2, m_co, T_w0, ..., T_w(N-1)]
     """
     m_u, H_u, m_o2, m_co2, m_co = y[:5]
-    T_w = y[5]                       # temperatura da superfície (primeiro nó)
+    T_w = y[5]
 
-    T_u = H_u / np.maximum(m_u, 1e-6)
+    T_u = H_u / np.maximum(m_u * C_P, 1e-12)   # <-- C_P incluído
     T_u_celsius = T_u - 273.15
     T_w_celsius = T_w - 273.15
     V_u = (m_u * R_AR * T_u) / P_ATM
@@ -36,13 +37,11 @@ def _calcular_campos(t, y, sala, C_P, R_AR, P_ATM):
         'Y_co2': Y_co2,
         'Y_co': Y_co,
     }
-    
-def _calcular_fluxos(t, y, sala, aberturas, objetos_ativos, C_P, R_AR, P_ATM, C_d=0.68):
-    """
-    Calcula m_dot_in e m_dot_out ao longo do tempo a partir do estado y.
-    """
-    
 
+
+def _calcular_fluxos(t, y, sala, aberturas, objetos_ativos,
+                     C_P, R_AR, P_ATM, C_d=0.68):
+    """Calcula m_dot_in e m_dot_out ao longo do tempo a partir do estado y."""
     n = len(t)
     m_dot_in_arr = np.zeros(n)
     m_dot_out_arr = np.zeros(n)
@@ -52,16 +51,16 @@ def _calcular_fluxos(t, y, sala, aberturas, objetos_ativos, C_P, R_AR, P_ATM, C_
         H_u = y[1, i] if y.ndim == 2 else y[1]
         m_u = max(m_u, 0.001)
         T_u = H_u / (m_u * C_P)
-        T_u = max(T_u, 200.0)          # consistente com o solver
+        T_u = max(T_u, 200.0)
         V_u = (m_u * R_AR * T_u) / P_ATM
         Z_int = sala["altura_z"] - V_u / sala["area_piso"]
         Z_int = max(Z_int, 0.0)
         rho_u = P_ATM / (R_AR * T_u)
 
-        # Obter propriedades do fogo no instante t[i] (objetos_ativos é uma lista de dicionários)
-        Q_dot, m_dot_fuel, _, _, _, _ = calcular_hrr_total_e_propriedades(t[i], objetos_ativos)
+        # 7 valores agora (incluindo D_fogo)
+        Q_dot, m_dot_fuel, _, _, _, _, _ = \
+            calcular_hrr_total_e_propriedades(t[i], objetos_ativos)
 
-        # Somar fluxos de todas as aberturas
         m_in_tot = 0.0
         m_out_tot = 0.0
         for vent in aberturas:

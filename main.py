@@ -1,32 +1,25 @@
 """
 Script principal para simulação e visualização do modelo de duas zonas.
-O cenário é selecionado pela variável CENARIO.
 """
-from src.geometria import carregar_geometria_padrao, carregar_geometria_teste2_1991
+from src.geometria import carregar_geometria_padrao, carregar_geometria_teste1_Babrauskas
 from src.edos_solver import simular_incendio_sequencial
 from src.constantes import C_P, R_AR, P_ATM
 from src.outputs import plotar_graficos, exportar_dados
 
-# ============================================================
-# Escolha do cenário (pode vir de input() se preferir)
-# ============================================================
-CENARIO = "teste2_1991"   # opções: "teste2_1991", "quarto_padrao"
-MODO_SAIDA = 'csv'       # 'plot' ou 'csv'
+CENARIO = "teste1_Babrauskas"   # opções: "teste1_Babrauskas", "quarto_padrao"
+MODO_SAIDA = 'csv' # plot , csv
+
 
 def configurar_cenario(nome: str):
-    """
-    Retorna um dicionário com todos os parâmetros do cenário escolhido.
-    Chaves:
-        sala, aberturas, objeto_inicial, outros_materiais,
-        objetos_geometria, titulo, t_final
-    """
-    if nome == "teste2_1991":
-        sala, _, aberturas = carregar_geometria_teste2_1991()
-        objeto_inicial = {"nome_material": "teste2_hrr_medida"}
+    if nome == "teste1_Babrauskas":
+        sala, _, aberturas = carregar_geometria_teste1_Babrauskas()
+        objeto_inicial = {"nome_material": "teste1_hrr_medida"}
         outros_materiais = []
-        objetos_geometria = [{"nome_material": "teste2_hrr_medida", "area": 1.5}]
-        titulo = "Teste 2 – Peacock et al. (1991)"
+        # Área real do loveseat F31 = 1.5 × 0.8 = 1.2 m²
+        objetos_geometria = [{"nome_material": "teste1_hrr_medida", "area": 1.2}]
+        titulo = "Teste 1 – Babrauskas (1984)"
         t_final = 2070
+
     elif nome == "quarto_padrao":
         sala, objetos, aberturas = carregar_geometria_padrao()
         cama = next(obj for obj in objetos if obj["nome"] == "Cama de Casal")
@@ -56,7 +49,7 @@ def configurar_cenario(nome: str):
 
 
 def rodar_teste():
-    modelo_pluma = 'mccaffrey'  # 'zukoski', 'mccaffrey', 'heskestad'
+    modelo_pluma = 'mccaffrey' # zukoski , heskestad , mccaffrey
 
     cfg = configurar_cenario(CENARIO)
     print(f"Cenário: {CENARIO}  |  Pluma: {modelo_pluma}")
@@ -80,16 +73,15 @@ def rodar_teste():
     elif MODO_SAIDA == 'csv':
         nome_ficheiro = f"resultados_{CENARIO}_{modelo_pluma}.csv"
         exportar_dados(t, y, cfg['sala'], cfg['aberturas'],
-                   C_P, R_AR, P_ATM,
-                   objeto_inicial=cfg['objeto_inicial'],
-                   outros_objetos=cfg['outros_materiais'],
-                   objetos_geometria=cfg['objetos_geometria'],
-                   nome_ficheiro=nome_ficheiro, dt_print=10.0,
-                   titulo=cfg['titulo'])
+                       C_P, R_AR, P_ATM,
+                       objeto_inicial=cfg['objeto_inicial'],
+                       outros_objetos=cfg['outros_materiais'],
+                       objetos_geometria=cfg['objetos_geometria'],
+                       nome_ficheiro=nome_ficheiro, dt_print=10.0,
+                       titulo=cfg['titulo'])
     else:
         print("Modo de saída desconhecido. Use 'plot' ou 'csv'.")
 
 
 if __name__ == "__main__":
-    
     rodar_teste()

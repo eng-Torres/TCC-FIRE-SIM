@@ -44,7 +44,7 @@ def calcular_fluxo_porta_duas_zonas(
         m_in, m_out = fluxos(z)
         if np.isinf(m_in) or np.isinf(m_out):
             return np.inf
-        return m_in - m_out - m_dot_combustivel
+        return m_out - m_in - m_dot_combustivel
 
     # Chute inicial
     r = densidade_fumaca / densidade_ar

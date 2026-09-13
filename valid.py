@@ -76,9 +76,9 @@ def load_simulacao(nome):
     co2 = df.iloc[:, 5].values
     return t, z, T_up, T_low, o2, co2
 
-t_hes, z_hes, Tup_hes, Tlow_hes, o2_hes, co2_hes = load_simulacao("resultados_teste2_1991_heskestad.csv")
-t_zuk, z_zuk, Tup_zuk, Tlow_zuk, o2_zuk, co2_zuk = load_simulacao("resultados_teste2_1991_zukoski.csv")
-t_mcc, z_mcc, Tup_mcc, Tlow_mcc, o2_mcc, co2_mcc = load_simulacao("resultados_teste2_1991_mccaffrey.csv")
+t_hes, z_hes, Tup_hes, Tlow_hes, o2_hes, co2_hes = load_simulacao("resultados_teste1_Babrauskas_heskestad.csv")
+t_zuk, z_zuk, Tup_zuk, Tlow_zuk, o2_zuk, co2_zuk = load_simulacao("resultados_teste1_Babrauskas_zukoski.csv")
+t_mcc, z_mcc, Tup_mcc, Tlow_mcc, o2_mcc, co2_mcc = load_simulacao("resultados_teste1_Babrauskas_mccaffrey.csv")
 
 print(f"Heskestad: {len(t_hes)} pts, Zukoski: {len(t_zuk)} pts, McCaffrey: {len(t_mcc)} pts")
 
@@ -160,7 +160,7 @@ plt.style.use('seaborn-v0_8-darkgrid')
 
 # 5.1 HRR (igual)
 plt.figure(figsize=(10,5))
-plt.plot(t_grid, HRR_exp_i, 'k-', label='Experimental (Peacock)')
+plt.plot(t_grid, HRR_exp_i, 'k-', label='Experimental (Babrauskas)')
 plt.xlabel('Tempo (s)'); plt.ylabel('HRR (kW)')
 plt.title('HRR – Teste 2')
 plt.legend(); plt.grid(); plt.tight_layout()
@@ -264,7 +264,7 @@ axs[4].set_ylabel('CO₂ (%)')
 axs[4].legend()
 axs[4].grid()
 
-fig.suptitle('Validação do Modelo – Teste 2 de Peacock (1991)', fontweight='bold')
+fig.suptitle('Validação do Modelo – Teste 2 de Babrauskas (1984)', fontweight='bold')
 fig.tight_layout()
 plt.savefig('validacao_todas.png', dpi=300)
 plt.close()
