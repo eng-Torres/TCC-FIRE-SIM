@@ -83,6 +83,22 @@ t_mcc, z_mcc, Tup_mcc, Tlow_mcc, o2_mcc, co2_mcc = load_simulacao("resultados_te
 print(f"Heskestad: {len(t_hes)} pts, Zukoski: {len(t_zuk)} pts, McCaffrey: {len(t_mcc)} pts")
 
 # =============================================================================
+# 2b. CONVERSÃO: fração mássica (simulação) → fração volumétrica
+# =============================================================================
+# Y_i = m_i/m_u (mássica)  →  X_i = Y_i · (M_ar / M_i) (volumétrica)
+M_AR  = 28.97
+M_O2  = 32.00
+M_CO2 = 44.01
+
+o2_hes_vol  = o2_hes  * (M_AR / M_O2)
+o2_zuk_vol  = o2_zuk  * (M_AR / M_O2)
+o2_mcc_vol  = o2_mcc  * (M_AR / M_O2)
+
+co2_hes_vol = co2_hes * (M_AR / M_CO2)
+co2_zuk_vol = co2_zuk * (M_AR / M_CO2)
+co2_mcc_vol = co2_mcc * (M_AR / M_CO2)
+
+# =============================================================================
 # 3. Interpolação para grid comum (0 a 2070 s)
 # =============================================================================
 t_grid = np.linspace(0, 2070, 2071)
@@ -110,18 +126,18 @@ CO2_cfast_i = interp_clean(t_cfast, co2_cfast, t_grid)
 # Simulações
 Tup_hes_i = interp_clean(t_hes, Tup_hes, t_grid)
 Z_hes_i = interp_clean(t_hes, z_hes, t_grid)
-O2_hes_i = interp_clean(t_hes, o2_hes, t_grid)
-CO2_hes_i = interp_clean(t_hes, co2_hes, t_grid)
+O2_hes_i = interp_clean(t_hes, o2_hes_vol, t_grid)
+CO2_hes_i = interp_clean(t_hes, co2_hes_vol, t_grid)
 
 Tup_zuk_i = interp_clean(t_zuk, Tup_zuk, t_grid)
 Z_zuk_i = interp_clean(t_zuk, z_zuk, t_grid)
-O2_zuk_i = interp_clean(t_zuk, o2_zuk, t_grid)
-CO2_zuk_i = interp_clean(t_zuk, co2_zuk, t_grid)
+O2_zuk_i = interp_clean(t_zuk, o2_zuk_vol, t_grid)
+CO2_zuk_i = interp_clean(t_zuk, co2_zuk_vol, t_grid)
 
 Tup_mcc_i = interp_clean(t_mcc, Tup_mcc, t_grid)
 Z_mcc_i = interp_clean(t_mcc, z_mcc, t_grid)
-O2_mcc_i = interp_clean(t_mcc, o2_mcc, t_grid)
-CO2_mcc_i = interp_clean(t_mcc, co2_mcc, t_grid)
+O2_mcc_i = interp_clean(t_mcc, o2_mcc_vol, t_grid)
+CO2_mcc_i = interp_clean(t_mcc, co2_mcc_vol, t_grid)
 
 # =============================================================================
 # 4. Métricas de erro
@@ -162,7 +178,7 @@ plt.style.use('seaborn-v0_8-darkgrid')
 plt.figure(figsize=(10,5))
 plt.plot(t_grid, HRR_exp_i, 'k-', label='Experimental (Babrauskas)')
 plt.xlabel('Tempo (s)'); plt.ylabel('HRR (kW)')
-plt.title('HRR – Teste 2')
+plt.title('HRR – Teste 1')
 plt.legend(); plt.grid(); plt.tight_layout()
 plt.savefig('validacao_hrr.png', dpi=300); plt.close()
 
@@ -198,7 +214,7 @@ plt.plot(t_hes, o2_hes*100, 'r-', lw=1.5, label='Heskestad')
 plt.plot(t_zuk, o2_zuk*100, 'b-', lw=1.5, label='Zukoski')
 plt.plot(t_mcc, o2_mcc*100, 'g-', lw=1.5, label='McCaffrey')
 plt.xlabel('Tempo (s)'); plt.ylabel('O₂ (%)')
-plt.title('Fração mássica de Oxigênio')
+plt.title('Fração volumétrica de Oxigênio')
 plt.legend(); plt.grid(); plt.tight_layout()
 plt.savefig('validacao_o2.png', dpi=300); plt.close()
 
@@ -210,7 +226,7 @@ plt.plot(t_hes, co2_hes*100, 'r-', lw=1.5, label='Heskestad')
 plt.plot(t_zuk, co2_zuk*100, 'b-', lw=1.5, label='Zukoski')
 plt.plot(t_mcc, co2_mcc*100, 'g-', lw=1.5, label='McCaffrey')
 plt.xlabel('Tempo (s)'); plt.ylabel('CO₂ (%)')
-plt.title('Fração mássica de Dióxido de Carbono')
+plt.title('Fração volumétrica de Dióxido de Carbono')
 plt.legend(); plt.grid(); plt.tight_layout()
 plt.savefig('validacao_co2.png', dpi=300); plt.close()
 
@@ -246,9 +262,9 @@ axs[2].grid()
 # O2 
 axs[3].plot(t_grid, O2_cfast_i*100, 'ko', markersize=1, label='CFAST')
 axs[3].plot(t_grid, O2_exp_i*100, 'm.', markersize=1, label='Experimental')
-axs[3].plot(t_hes, o2_hes*100, 'r-', lw=1, label='Heskestad')
-axs[3].plot(t_zuk, o2_zuk*100, 'b-', lw=1, label='Zukoski')
-axs[3].plot(t_mcc, o2_mcc*100, 'g-', lw=1, label='McCaffrey')
+axs[3].plot(t_hes, o2_hes_vol*100, 'r-', lw=1, label='Heskestad')
+axs[3].plot(t_zuk, o2_zuk_vol*100, 'b-', lw=1, label='Zukoski')
+axs[3].plot(t_mcc, o2_mcc_vol*100, 'g-', lw=1, label='McCaffrey')
 axs[3].set_ylabel('O₂ (%)')
 axs[3].legend()
 axs[3].grid()
@@ -256,15 +272,15 @@ axs[3].grid()
 # CO2 
 axs[4].plot(t_grid, CO2_cfast_i*100, 'ko', markersize=1, label='CFAST')
 axs[4].plot(t_grid, CO2_exp_i*100, 'm.', markersize=1, label='Experimental')
-axs[4].plot(t_hes, co2_hes*100, 'r-', lw=1, label='Heskestad')
-axs[4].plot(t_zuk, co2_zuk*100, 'b-', lw=1, label='Zukoski')
-axs[4].plot(t_mcc, co2_mcc*100, 'g-', lw=1, label='McCaffrey')
+axs[4].plot(t_hes, co2_hes_vol*100, 'r-', lw=1, label='Heskestad')
+axs[4].plot(t_zuk, co2_zuk_vol*100, 'b-', lw=1, label='Zukoski')
+axs[4].plot(t_mcc, co2_mcc_vol*100, 'g-', lw=1, label='McCaffrey')
 axs[4].set_xlabel('Tempo (s)')
 axs[4].set_ylabel('CO₂ (%)')
 axs[4].legend()
 axs[4].grid()
 
-fig.suptitle('Validação do Modelo – Teste 2 de Babrauskas (1984)', fontweight='bold')
+fig.suptitle('Validação do Modelo – Teste 1 de Babrauskas (1984)', fontweight='bold')
 fig.tight_layout()
 plt.savefig('validacao_todas.png', dpi=300)
 plt.close()

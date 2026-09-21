@@ -22,7 +22,7 @@ from src.termica_parede import criar_parede, derivadas_parede
 MATERIAL_PAREDE = 'gesso_16mm'
 MAX_STEP = 0.1
 PONTOS_POR_SEGUNDO = 10
-N_NOS = 12
+N_NOS = 5
 
 props_parede = MATERIAIS_CONSTRUCAO[MATERIAL_PAREDE]
 K_W = props_parede['k']
@@ -54,7 +54,7 @@ def _pluma_zukoski(Q_c, z):
 
 
 def _pluma_heskestad(Q_dot_total, Q_c, z, D,
-                     T_inf=293.15, cp=1.005, rho_inf=1.2, g=9.81):
+                     T_inf=T_AMB, cp=C_P, rho_inf=RHO_AMB, g=9.81):
     """Heskestad plume entrainment – CFAST Eqs. (3.16)-(3.18)."""
     if z <= 0.01 or Q_c <= 0.0 or D <= 0.0:
         return 0.0
@@ -321,4 +321,4 @@ def simular_incendio_sequencial(sala, aberturas,
             y_hist.append(sol_i.y[:, 1:])
     t_total = np.concatenate(t_hist)
     y_total = np.concatenate(y_hist, axis=1)
-    return t_total, y_total
+    return t_total, y_total, objetos_ativos

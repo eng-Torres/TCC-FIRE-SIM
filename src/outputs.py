@@ -106,7 +106,7 @@ def plotar_graficos(t, y, sala, aberturas, C_P, R_AR, P_ATM, titulo="Simulação
     # Gráfico 2: Temperaturas
     ax2.plot(t, T_u_celsius, 'firebrick', lw=2, label='Camada superior')
     ax2.plot(t, T_w_celsius, 'brown', lw=1.5, ls='--', label='Parede (superfície)')
-    ax2.axhline(20, color='gray', ls=':', label='Ambiente (20°C)')
+    ax2.axhline(T_AMB-273.15, color='gray', ls=':', label=f'Ambiente ({T_AMB-273.15:.0f}°C)')
     ax2.axhline(600, color='darkorange', ls='--', label='Flashover 600°C')
     ax2.axhline(300, color='blue', ls=':', label='Ignição madeira 300°C')
     ax2.set_ylabel('Temperatura (°C)')
@@ -131,9 +131,7 @@ def plotar_graficos(t, y, sala, aberturas, C_P, R_AR, P_ATM, titulo="Simulação
     plt.tight_layout()
     plt.show()
 
-def exportar_dados(t, y, sala, aberturas, C_P, R_AR, P_ATM,
-                   objeto_inicial=None, outros_objetos=None,
-                   objetos_geometria=None,
+def exportar_dados(t, y, objetos_ativos, sala, aberturas, C_P, R_AR, P_ATM,
                    nome_ficheiro="resultados.csv", dt_print=10.0,
                    titulo="Simulação de Incêndio"):
     t_alvo = np.arange(0.0, t[-1] + dt_print, dt_print)
@@ -142,25 +140,10 @@ def exportar_dados(t, y, sala, aberturas, C_P, R_AR, P_ATM,
     y_interp = np.array([np.interp(t_alvo, t, y[i]) for i in range(y.shape[0])])
     dados = _calcular_campos(t_alvo, y_interp, sala, C_P, R_AR, P_ATM)
 
-    # --- NOVO: Calcular vazões nos instantes de saída ---
-    # Prepara lista de objetos ativos (igual ao inicio da simulação)
-    if objeto_inicial is not None:
-        area_por_material = {obj['nome_material']: obj['area'] for obj in objetos_geometria}
-        nome_inicial = objeto_inicial['nome_material']
-        area_inicial = area_por_material.get(nome_inicial, 2.8)
-        objetos_ativos = [{'nome_material': nome_inicial, 't_ign': 0.0, 'area': area_inicial}]
-        if outros_objetos:
-            for mat in outros_objetos:
-                nome = mat['nome_material']
-                area = area_por_material.get(nome, 1.0)
-                objetos_ativos.append({'nome_material': nome, 't_ign': mat.get('T_ign', 0.0), 'area': area})
-        # Calcular fluxos nos tempos alvo
-        m_dot_in_arr, m_dot_out_arr = _calcular_fluxos(
-            t_alvo, y_interp, sala, aberturas, objetos_ativos,
-            C_P, R_AR, P_ATM, C_d=0.68)
-    else:
-        m_dot_in_arr = np.zeros_like(t_alvo)
-        m_dot_out_arr = np.zeros_like(t_alvo)
+    # --- Calcular vazões nos instantes de saída ---
+    m_dot_in_arr, m_dot_out_arr = _calcular_fluxos(
+    t_alvo, y_interp, sala, aberturas, objetos_ativos,
+    C_P, R_AR, P_ATM, C_d=0.68)
 
     # Cabeçalho com as novas colunas
     cabecalho = (f"# Cenário: {titulo}\n"

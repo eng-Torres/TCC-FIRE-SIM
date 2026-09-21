@@ -24,13 +24,20 @@ def configurar_cenario(nome: str):
         sala, objetos, aberturas = carregar_geometria_padrao()
         cama = next(obj for obj in objetos if obj["nome"] == "Cama de Casal")
         guarda_roupa = next(obj for obj in objetos if obj["nome"] == "Guarda-Roupa")
+        tapete_de_papelao = next(obj for obj in objetos if obj["nome"] == "Tapete de Papelao")
+        cadeira = next(obj for obj in objetos if obj["nome"] == "cadeira")
+        
         objeto_inicial = {"nome_material": cama["tipo_material"]}
         outros_materiais = [
-            {"nome_material": guarda_roupa["tipo_material"], "T_ign": guarda_roupa["T_ign"]}
+            {"nome_material": guarda_roupa["tipo_material"], "T_ign": guarda_roupa["T_ign"]},
+            {"nome_material": tapete_de_papelao["tipo_material"], "T_ign": tapete_de_papelao["T_ign"]},
+            {"nome_material": cadeira["tipo_material"], "T_ign": cadeira["T_ign"]}
         ]
         objetos_geometria = [
             {"nome_material": cama["tipo_material"], "area": 2.8},
-            {"nome_material": guarda_roupa["tipo_material"], "area": 0.9}
+            {"nome_material": guarda_roupa["tipo_material"], "area": 0.9},
+            {"nome_material": tapete_de_papelao["tipo_material"], "area": 2.0},
+            {"nome_material": cadeira["tipo_material"], "area": 0.25}
         ]
         titulo = "Incêndio no Quarto Padrão – Ignição Sequencial"
         t_final = 600
@@ -55,7 +62,7 @@ def rodar_teste():
     print(f"Cenário: {CENARIO}  |  Pluma: {modelo_pluma}")
     print(f"Iniciando simulação de {cfg['t_final']} segundos. Aguarde...")
 
-    t, y = simular_incendio_sequencial(
+    t, y, objetos_ativos = simular_incendio_sequencial(
         cfg['sala'], cfg['aberturas'],
         objeto_inicial=cfg['objeto_inicial'],
         outros_objetos=cfg['outros_materiais'],
@@ -72,11 +79,8 @@ def rodar_teste():
                         C_P, R_AR, P_ATM, titulo=cfg['titulo'])
     elif MODO_SAIDA == 'csv':
         nome_ficheiro = f"resultados_{CENARIO}_{modelo_pluma}.csv"
-        exportar_dados(t, y, cfg['sala'], cfg['aberturas'],
+        exportar_dados(t, y, objetos_ativos, cfg['sala'], cfg['aberturas'],
                        C_P, R_AR, P_ATM,
-                       objeto_inicial=cfg['objeto_inicial'],
-                       outros_objetos=cfg['outros_materiais'],
-                       objetos_geometria=cfg['objetos_geometria'],
                        nome_ficheiro=nome_ficheiro, dt_print=10.0,
                        titulo=cfg['titulo'])
     else:

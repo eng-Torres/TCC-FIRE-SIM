@@ -33,6 +33,11 @@ def propriedades_combustao(nome_material: str) -> dict:
     else:
         return COMBUSTAO_PADRAO.copy()
 
+HRR_MIN_PLUME = 2.50   # kW — abaixo disso, a pluma não é acionada
+                       # justificativa: correlações de Heskestad/Zukoski/McCaffrey
+                       # foram ajustadas para chamas com HRR >> 10 kW.
+                       # Abaixo desse valor, a pluma não é turbulenta e a
+                       # correlação perde validade física.
 
 def calcular_hrr_total_e_propriedades(t_global, objetos_ativos):
     """
@@ -74,6 +79,16 @@ def calcular_hrr_total_e_propriedades(t_global, objetos_ativos):
         y_co2_num    += m_fuel_obj * props['y_co2']
         y_co_num     += m_fuel_obj * props['y_co']
         area_hrr_num += hrr_obj * area_obj
+
+    # ---- Limiar de pluma ----
+    if hrr_total < HRR_MIN_PLUME:
+        hrr_total    = 0.0
+        m_fuel_total = 0.0
+        delta_Hc_num = 0.0
+        nu_o2_num    = 0.0
+        y_co2_num    = 0.0
+        y_co_num     = 0.0
+        area_hrr_num = 0.0
 
     if m_fuel_total > 0:
         delta_Hc_pond = delta_Hc_num / m_fuel_total

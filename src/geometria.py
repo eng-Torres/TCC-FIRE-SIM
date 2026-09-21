@@ -33,6 +33,16 @@ def carregar_geometria_padrao():
             "dimensoes": {"x": 1.0, "y": 2.0, "z": 0.01},
             "tipo_material": "papelao",
             "T_ign": 373.15
+        },
+        {
+            "nome": "cadeira",
+            "posicao": {"x": 1.5, "y": 1.0, "z": 0.0},
+            "dimensoes": {"x": 0.5, "y": 0.5, "z": 0.5},
+            "tipo_material": "armchair_h",
+            "T_ign": 473.15    
+
+
+
         }
     ]
 
