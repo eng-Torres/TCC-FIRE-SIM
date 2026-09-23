@@ -21,7 +21,7 @@ IDX_CO2 = 2
 
 # ---------- Extração dos dados experimentais ----------
 t_exp = pd.to_numeric(df_exp[IDX_TIME], errors='coerce').values
-hrr_exp = pd.to_numeric(df_exp[IDX_HRR], errors='coerce').values
+hrr_exp = pd.to_numeric(df_exp[IDX_HRR], errors='coerce').values /1000
 z_int_exp = pd.to_numeric(df_exp[IDX_INTRFACE], errors='coerce').values
 t_up_exp_raw = pd.to_numeric(df_exp[IDX_TEMPUP], errors='coerce').values
 t_low_exp = pd.to_numeric(df_exp[IDX_TEMPLOW], errors='coerce').values

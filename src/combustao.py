@@ -32,12 +32,29 @@ def propriedades_combustao(nome_material: str) -> dict:
         }
     else:
         return COMBUSTAO_PADRAO.copy()
+HRR_MIN_PLUME = 100.0    # kW — pico de referência do gate
+HRR_LARGURA_REL = 0.4    # largura relativa da transição (0 a 1)
 
-HRR_MIN_PLUME = 2.50   # kW — abaixo disso, a pluma não é acionada
-                       # justificativa: correlações de Heskestad/Zukoski/McCaffrey
-                       # foram ajustadas para chamas com HRR >> 10 kW.
-                       # Abaixo desse valor, a pluma não é turbulenta e a
-                       # correlação perde validade física.
+
+def _smooth_gate(hrr, hrr_min, largura_rel=0.4):
+    """
+    Fator suave entre 0 (hrr << hrr_min) e 1 (hrr >> hrr_min).
+
+    Usa smoothstep: f(x) = 3x² − 2x³, com x ∈ [0, 1].
+    C¹ contínuo — o Jacobiano do Radau não sofre com descontinuidade.
+
+    Faixa de transição:
+        hrr_lo = (1 − largura_rel) · hrr_min
+        hrr_hi = (1 + largura_rel) · hrr_min
+    """
+    hrr_lo = (1.0 - largura_rel) * hrr_min
+    hrr_hi = (1.0 + largura_rel) * hrr_min
+    if hrr <= hrr_lo:
+        return 0.0
+    if hrr >= hrr_hi:
+        return 1.0
+    x = (hrr - hrr_lo) / (hrr_hi - hrr_lo)
+    return x * x * (3.0 - 2.0 * x)
 
 def calcular_hrr_total_e_propriedades(t_global, objetos_ativos):
     """
@@ -80,15 +97,16 @@ def calcular_hrr_total_e_propriedades(t_global, objetos_ativos):
         y_co_num     += m_fuel_obj * props['y_co']
         area_hrr_num += hrr_obj * area_obj
 
-    # ---- Limiar de pluma ----
-    if hrr_total < HRR_MIN_PLUME:
-        hrr_total    = 0.0
-        m_fuel_total = 0.0
-        delta_Hc_num = 0.0
-        nu_o2_num    = 0.0
-        y_co2_num    = 0.0
-        y_co_num     = 0.0
-        area_hrr_num = 0.0
+   # ---- Gate suave no HRR total (substitui o corte abrupto) ----
+    fator_gate = _smooth_gate(hrr_total, HRR_MIN_PLUME, HRR_LARGURA_REL)
+
+    hrr_total    *= fator_gate
+    m_fuel_total *= fator_gate
+    delta_Hc_num *= fator_gate
+    nu_o2_num    *= fator_gate
+    y_co2_num    *= fator_gate
+    y_co_num     *= fator_gate
+    area_hrr_num *= fator_gate
 
     if m_fuel_total > 0:
         delta_Hc_pond = delta_Hc_num / m_fuel_total
