@@ -32,7 +32,7 @@ def propriedades_combustao(nome_material: str) -> dict:
         }
     else:
         return COMBUSTAO_PADRAO.copy()
-HRR_MIN_PLUME = 100.0    # kW — pico de referência do gate
+HRR_MIN_PLUME = 10.0    # kW — pico de referência do gate
 HRR_LARGURA_REL = 0.4    # largura relativa da transição (0 a 1)
 
 

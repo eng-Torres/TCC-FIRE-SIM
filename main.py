@@ -69,7 +69,6 @@ def rodar_teste():
         objetos_geometria=cfg['objetos_geometria'],
         t_final=cfg['t_final'],
         modelo_pluma=modelo_pluma,
-        crescimento_t2="medio"
     )
 
     print("Simulação concluída! Processando resultados...")
