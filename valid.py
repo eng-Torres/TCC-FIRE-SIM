@@ -1,289 +1,313 @@
-import pandas as pd
+"""
+Validação do simulador contra dados experimentais e/ou CFAST.
+
+Uso:
+    python valid.py --cenario teste1_Babrauskas
+    python valid.py --cenario teste1_Babrauskas --t-max 1200
+
+O cenário YAML precisa ter uma seção 'validacao' (ver exemplo).
+Todos os caminhos em 'validacao' são relativos a ./cenarios/.
+"""
+import argparse
+import sys
+from pathlib import Path
+
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.interpolate import interp1d
 
-# =============================================================================
-# 1. Leitura do arquivo experimental + CFAST
-# =============================================================================
-exp_file = "1Room1.csv"
-df_exp = pd.read_csv(exp_file, skiprows=2, header=None)
-print(f"Experimental: {len(df_exp)} linhas, {df_exp.shape[1]} colunas")
+from src.io_cenario import carregar_cenario, localizar_cenario, ErroCenario
+from src.io_dados import ler_serie, interpolar_em_grid
 
-# ---------- Índices das colunas experimentais (verifique se estão corretos) ----------
-IDX_TIME = 86
-IDX_HRR = 8
-IDX_INTRFACE = 10
-IDX_TEMPUP = 83
-IDX_TEMPLOW = 72
-IDX_O2 = 21
-IDX_CO2 = 2
+CENARIOS_DIR = Path(__file__).resolve().parent / "cenarios"
 
-# ---------- Extração dos dados experimentais ----------
-t_exp = pd.to_numeric(df_exp[IDX_TIME], errors='coerce').values
-hrr_exp = pd.to_numeric(df_exp[IDX_HRR], errors='coerce').values /1000
-z_int_exp = pd.to_numeric(df_exp[IDX_INTRFACE], errors='coerce').values
-t_up_exp_raw = pd.to_numeric(df_exp[IDX_TEMPUP], errors='coerce').values
-t_low_exp = pd.to_numeric(df_exp[IDX_TEMPLOW], errors='coerce').values
-o2_exp_raw = pd.to_numeric(df_exp[IDX_O2], errors='coerce').values
-co2_exp_raw = pd.to_numeric(df_exp[IDX_CO2], errors='coerce').values
 
-# ---------- Extração dos dados CFAST (últimas 6 colunas) ----------
-cfast_cols = df_exp.iloc[:, -6:]
-t_cfast_min = pd.to_numeric(cfast_cols.iloc[:, 0], errors='coerce').values
-t_up_cfast = pd.to_numeric(cfast_cols.iloc[:, 1], errors='coerce').values
-z_cfast = pd.to_numeric(cfast_cols.iloc[:, 2], errors='coerce').values
-o2_cfast_perc = pd.to_numeric(cfast_cols.iloc[:, 4], errors='coerce').values
-co2_cfast_perc = pd.to_numeric(cfast_cols.iloc[:, 5], errors='coerce').values
-
-t_cfast = t_cfast_min * 60.0
-o2_cfast = o2_cfast_perc / 100.0
-co2_cfast = co2_cfast_perc / 100.0
-
-# Converter experimentais para fração e Celsius se necessário
-if np.nanmax(o2_exp_raw) > 1.0:
-    print("O2 experimental em porcentagem. Dividindo por 100.")
-    o2_exp = o2_exp_raw / 100.0
-else:
-    o2_exp = o2_exp_raw
-
-if np.nanmax(co2_exp_raw) > 1.0:
-    print("CO2 experimental em porcentagem. Dividindo por 100.")
-    co2_exp = co2_exp_raw / 100.0
-else:
-    co2_exp = co2_exp_raw
-
-if np.nanmax(t_up_exp_raw) > 100:
-    print("TEMPUP experimental em Kelvin. Convertendo para Celsius.")
-    t_up_exp = t_up_exp_raw - 273.15
-else:
-    t_up_exp = t_up_exp_raw
-
-# =============================================================================
-# 2. Leitura das simulações (Heskestad, Zukoski, McCaffrey)
-# =============================================================================
-def load_simulacao(nome):
-    # Lê arquivo, ignorando linhas que começam com '#'
-    df = pd.read_csv(nome, comment='#')
-    df.columns = df.columns.str.strip()
-    # As primeiras colunas são: Tempo(s), Z_int(m), T_u(C), T_w(C), Y_O2, Y_CO2, ...
-    # Pegamos as 6 primeiras
-    t = df.iloc[:, 0].values
-    z = df.iloc[:, 1].values
-    T_up = df.iloc[:, 2].values
-    T_low = df.iloc[:, 3].values
-    o2 = df.iloc[:, 4].values
-    co2 = df.iloc[:, 5].values
-    return t, z, T_up, T_low, o2, co2
-
-t_hes, z_hes, Tup_hes, Tlow_hes, o2_hes, co2_hes = load_simulacao("resultados_teste1_Babrauskas_heskestad.csv")
-t_zuk, z_zuk, Tup_zuk, Tlow_zuk, o2_zuk, co2_zuk = load_simulacao("resultados_teste1_Babrauskas_zukoski.csv")
-t_mcc, z_mcc, Tup_mcc, Tlow_mcc, o2_mcc, co2_mcc = load_simulacao("resultados_teste1_Babrauskas_mccaffrey.csv")
-
-print(f"Heskestad: {len(t_hes)} pts, Zukoski: {len(t_zuk)} pts, McCaffrey: {len(t_mcc)} pts")
-
-# =============================================================================
-# 2b. CONVERSÃO: fração mássica (simulação) → fração volumétrica
-# =============================================================================
-# Y_i = m_i/m_u (mássica)  →  X_i = Y_i · (M_ar / M_i) (volumétrica)
-M_AR  = 28.97
-M_O2  = 32.00
-M_CO2 = 44.01
-
-o2_hes_vol  = o2_hes  * (M_AR / M_O2)
-o2_zuk_vol  = o2_zuk  * (M_AR / M_O2)
-o2_mcc_vol  = o2_mcc  * (M_AR / M_O2)
-
-co2_hes_vol = co2_hes * (M_AR / M_CO2)
-co2_zuk_vol = co2_zuk * (M_AR / M_CO2)
-co2_mcc_vol = co2_mcc * (M_AR / M_CO2)
-
-# =============================================================================
-# 3. Interpolação para grid comum (0 a 2070 s)
-# =============================================================================
-t_grid = np.linspace(0, 2070, 2071)
-
-def interp_clean(x, y, t_grid):
-    mask = ~np.isnan(y) & ~np.isnan(x)
+# ---------------------------------------------------------------------------
+# Métricas de erro
+# ---------------------------------------------------------------------------
+def metricas(y_sim, y_ref, nome):
+    """RMSE, MAE, Max, viés — em unidades físicas. Sem MAPE (instável)."""
+    mask = np.isfinite(y_sim) & np.isfinite(y_ref)
     if mask.sum() == 0:
-        return np.full_like(t_grid, np.nan)
-    f = interp1d(x[mask], y[mask], bounds_error=False, fill_value=np.nan)
-    return f(t_grid)
+        return None
+    d = y_sim[mask] - y_ref[mask]
+    return {
+        'nome': nome,
+        'n':    int(mask.sum()),
+        'rmse': float(np.sqrt(np.mean(d ** 2))),
+        'mae':  float(np.mean(np.abs(d))),
+        'max':  float(np.max(np.abs(d))),
+        'bias': float(np.mean(d)),
+    }
 
-# Experimentais
-Tup_exp_i = interp_clean(t_exp, t_up_exp, t_grid)
-Z_exp_i = interp_clean(t_exp, z_int_exp, t_grid)
-HRR_exp_i = interp_clean(t_exp, hrr_exp, t_grid)
-O2_exp_i = interp_clean(t_exp, o2_exp, t_grid)
-CO2_exp_i = interp_clean(t_exp, co2_exp, t_grid)
 
-# CFAST
-Tup_cfast_i = interp_clean(t_cfast, t_up_cfast, t_grid)
-Z_cfast_i = interp_clean(t_cfast, z_cfast, t_grid)
-O2_cfast_i = interp_clean(t_cfast, o2_cfast, t_grid)
-CO2_cfast_i = interp_clean(t_cfast, co2_cfast, t_grid)
+def imprimir_metricas(tabela):
+    print(f"\n{'Série':<35} {'n':>5} {'RMSE':>9} {'MAE':>9} {'Max':>9} {'Viés':>9}")
+    print('-' * 80)
+    for m in tabela:
+        print(f"{m['nome']:<35} {m['n']:>5d} "
+              f"{m['rmse']:>9.3f} {m['mae']:>9.3f} "
+              f"{m['max']:>9.3f} {m['bias']:>9.3f}")
 
-# Simulações
-Tup_hes_i = interp_clean(t_hes, Tup_hes, t_grid)
-Z_hes_i = interp_clean(t_hes, z_hes, t_grid)
-O2_hes_i = interp_clean(t_hes, o2_hes_vol, t_grid)
-CO2_hes_i = interp_clean(t_hes, co2_hes_vol, t_grid)
 
-Tup_zuk_i = interp_clean(t_zuk, Tup_zuk, t_grid)
-Z_zuk_i = interp_clean(t_zuk, z_zuk, t_grid)
-O2_zuk_i = interp_clean(t_zuk, o2_zuk_vol, t_grid)
-CO2_zuk_i = interp_clean(t_zuk, co2_zuk_vol, t_grid)
+# ---------------------------------------------------------------------------
+# Leitura dos arquivos listados no YAML
+# ---------------------------------------------------------------------------
+def _resolver_caminho(rel):
+    p = Path(rel)
+    if not p.is_absolute():
+        p = CENARIOS_DIR / p
+    return p
 
-Tup_mcc_i = interp_clean(t_mcc, Tup_mcc, t_grid)
-Z_mcc_i = interp_clean(t_mcc, z_mcc, t_grid)
-O2_mcc_i = interp_clean(t_mcc, o2_mcc_vol, t_grid)
-CO2_mcc_i = interp_clean(t_mcc, co2_mcc_vol, t_grid)
 
-# =============================================================================
-# 4. Métricas de erro
-# =============================================================================
-def metrics(y_sim, y_ref, nome):
-    mask = ~np.isnan(y_sim) & ~np.isnan(y_ref)
-    if mask.sum() == 0:
-        print(f"{nome}: sem dados")
+def carregar_series(cfg):
+    """
+    Lê experimental, CFAST e modelos a partir da seção 'validacao'.
+
+    Arquivos ausentes são tratados como fontes opcionais: um aviso é
+    impresso e a fonte é ignorada. O programa só falha se:
+      - não houver seção 'validacao';
+      - não sobrar nenhuma série válida (nem experimental, nem modelos).
+    """
+    val = cfg.get('validacao')
+    if not val:
+        raise ErroCenario(
+            "Cenário não tem seção 'validacao'. Adicione-a para usar valid.py."
+        )
+
+    resultado = {'experimental': None, 'cfast': [], 'modelos': []}
+
+    # --- Experimental (obrigatório) ---
+    exp = val.get('experimental')
+    if exp is None:
+        raise ErroCenario("Seção 'validacao.experimental' é obrigatória.")
+
+    caminho_exp = _resolver_caminho(exp['arquivo'])
+    if not caminho_exp.is_file():
+        raise ErroCenario(
+            f"Arquivo experimental não encontrado: {caminho_exp}\n"
+            f"Coloque o arquivo em ./cenarios/ ou ajuste o caminho no YAML."
+        )
+
+    try:
+        serie = ler_serie(caminho_exp, formato=exp.get('formato', 'auto'))
+    except Exception as e:
+        raise ErroCenario(
+            f"Falha ao ler experimental '{caminho_exp}': {e}"
+        )
+
+    cfast_embutido = serie.pop('cfast', None)
+    resultado['experimental'] = {
+        'label': exp.get('label', 'Experimental'),
+        'cor':   exp.get('cor', 'magenta'),
+        'serie': serie,
+    }
+    if cfast_embutido is not None and val.get('usar_cfast_embutido', False):
+        resultado['cfast'].append({
+            'label': cfast_embutido['fonte'],
+            'cor':   'black',
+            'serie': cfast_embutido,
+        })
+
+    # --- CFAST externos (opcional) ---
+    for item in val.get('cfast', []) or []:
+        caminho = _resolver_caminho(item['arquivo'])
+        if not caminho.is_file():
+            print(f"[AVISO] CFAST '{item.get('label', item['arquivo'])}' "
+                  f"não encontrado em {caminho}. Pulando.")
+            continue
+        try:
+            serie = ler_serie(caminho, formato=item.get('formato', 'auto'))
+        except Exception as e:
+            print(f"[AVISO] Falha ao ler '{caminho}': {e}. Pulando.")
+            continue
+        resultado['cfast'].append({
+            'label': item.get('label', serie['fonte']),
+            'cor':   item.get('cor', 'black'),
+            'serie': serie,
+        })
+
+    # --- Modelos / saídas do simulador (opcional, mas exigimos pelo menos um) ---
+    for item in val.get('modelos', []) or []:
+        caminho = _resolver_caminho(item['arquivo'])
+        if not caminho.is_file():
+            print(f"[AVISO] Modelo '{item.get('label', item['arquivo'])}' "
+                  f"não encontrado em {caminho}. Pulando.")
+            continue
+        try:
+            serie = ler_serie(caminho, formato='simulador')
+        except Exception as e:
+            print(f"[AVISO] Falha ao ler '{caminho}': {e}. Pulando.")
+            continue
+        resultado['modelos'].append({
+            'label': item.get('label', 'Modelo'),
+            'cor':   item.get('cor', 'red'),
+            'serie': serie,
+        })
+
+    if not resultado['modelos']:
+        raise ErroCenario(
+            "Nenhum modelo do simulador foi carregado. Gere ao menos um CSV "
+            "com `python main.py --cenario ... --saida csv` antes de validar."
+        )
+
+    return resultado
+
+# ---------------------------------------------------------------------------
+# Plotagem
+# ---------------------------------------------------------------------------
+def plotar_painel(cfg, dados, t_grid, t_max, saida_png):
+    nome_cenario = cfg.get('nome', 'cenário')
+    referencia   = cfg.get('referencia', '').strip()
+    descricao    = cfg.get('descricao', '').strip()
+
+    titulo = f"Validação — {nome_cenario}"
+    if referencia:
+        titulo += f"\n({referencia})"
+
+    fig, axs = plt.subplots(5, 1, figsize=(11, 14), sharex=True)
+
+    def _plotar(ax, chave, ylabel, escala=1.0, titulo_ax=''):
+        # Experimental
+        if dados['experimental']:
+            s = dados['experimental']
+            y = interpolar_em_grid(s['serie'], t_grid).get(chave)
+            if y is not None:
+                ax.plot(t_grid, y * escala, '.', color=s['cor'],
+                        markersize=2, label=s['label'], zorder=4)
+        # CFAST
+        for s in dados['cfast']:
+            y = interpolar_em_grid(s['serie'], t_grid).get(chave)
+            if y is not None:
+                ax.plot(t_grid, y * escala, 'o', color=s['cor'],
+                        markersize=2, markerfacecolor='none',
+                        label=s['label'], zorder=3)
+        # Modelos
+        for s in dados['modelos']:
+            y = interpolar_em_grid(s['serie'], t_grid).get(chave)
+            if y is not None:
+                ax.plot(t_grid, y * escala, '-', color=s['cor'],
+                        linewidth=1.5, label=s['label'], zorder=2)
+
+        ax.set_ylabel(ylabel)
+        ax.set_title(titulo_ax, loc='left', fontsize=10)
+        ax.grid(True, alpha=0.3)
+        ax.legend(fontsize=8, loc='best')
+
+    _plotar(axs[0], 'HRR_kW',  'HRR (kW)',       titulo_ax='Taxa de liberação de calor')
+    _plotar(axs[1], 'T_up_C',  'T (°C)',         titulo_ax='Temperatura da camada superior')
+    _plotar(axs[2], 'Z_int_m', 'Z_int (m)',      titulo_ax='Altura da interface')
+    _plotar(axs[3], 'O2_vol',  'O₂ (fração vol.)', escala=100.0,
+            titulo_ax='Oxigênio (base volumétrica)')
+    _plotar(axs[4], 'CO2_vol', 'CO₂ (fração vol.)', escala=100.0,
+            titulo_ax='Dióxido de carbono (base volumétrica)')
+
+    axs[4].set_xlabel('Tempo (s)')
+    axs[0].set_xlim(0, t_max)
+
+    fig.suptitle(titulo, fontweight='bold', fontsize=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.97])
+    fig.savefig(saida_png, dpi=200)
+    print(f"Figura salva em: {saida_png}")
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# Comparação numérica
+# ---------------------------------------------------------------------------
+def _estatisticas_referencia(exp, t_grid):
+    """Imprime um resumo das séries experimentais no grid de comparação."""
+    print("\n=== REFERÊNCIA EXPERIMENTAL ===")
+    grid_exp = interpolar_em_grid(exp['serie'], t_grid)
+    print(f"{'Série':<15} {'n':>5} {'min':>10} {'max':>10} {'média':>10} {'desv.p.':>10}")
+    print('-' * 65)
+    for chave, unidade in [('T_up_C', '°C'),
+                            ('Z_int_m', 'm'),
+                            ('O2_vol',  'frac vol'),
+                            ('CO2_vol', 'frac vol'),
+                            ('HRR_kW',  'kW')]:
+        y = grid_exp.get(chave)
+        if y is None:
+            continue
+        m = np.isfinite(y)
+        if m.sum() == 0:
+            continue
+        print(f"{chave:<15} {int(m.sum()):>5d} "
+              f"{np.nanmin(y):>10.4f} {np.nanmax(y):>10.4f} "
+              f"{np.nanmean(y):>10.4f} {np.nanstd(y):>10.4f}   [{unidade}]")
+    print()
+
+
+def comparar(dados, t_grid):
+    exp = dados['experimental']
+    if exp is None:
+        print("[AVISO] Sem dados experimentais — pulando métricas.")
         return
-    y_s = y_sim[mask]
-    y_r = y_ref[mask]
-    rmse = np.sqrt(np.mean((y_s - y_r)**2))
-    mae = np.mean(np.abs(y_s - y_r))
-    mape = np.mean(np.abs((y_s - y_r) / (y_r + 1e-6))) * 100
-    max_err = np.max(np.abs(y_s - y_r))
-    print(f"{nome}: RMSE={rmse:.2f}, MAE={mae:.2f}, MAPE={mape:.2f}%, Max={max_err:.2f}")
 
-print("\n=== MÉTRICAS  ===\n")
-metrics(Tup_hes_i, Tup_exp_i, "Heskestad - T_up")
-metrics(Tup_zuk_i, Tup_exp_i, "Zukoski - T_up")
-metrics(Tup_mcc_i, Tup_exp_i, "McCaffrey - T_up")
-metrics(Z_hes_i, Z_exp_i, "Heskestad - Z_int")
-metrics(Z_zuk_i, Z_exp_i, "Zukoski - Z_int")
-metrics(Z_mcc_i, Z_exp_i, "McCaffrey - Z_int")
-metrics(O2_hes_i, O2_exp_i, "Heskestad - O2")
-metrics(O2_zuk_i, O2_exp_i, "Zukoski - O2")
-metrics(O2_mcc_i, O2_exp_i, "McCaffrey - O2")
-metrics(CO2_hes_i, CO2_exp_i, "Heskestad - CO2")
-metrics(CO2_zuk_i, CO2_exp_i, "Zukoski - CO2")
-metrics(CO2_mcc_i, CO2_exp_i, "McCaffrey - CO2")
+    # Bloco descritivo da referência
+    _estatisticas_referencia(exp, t_grid)
 
-# =============================================================================
-# 5. Gráficos
-# =============================================================================
-plt.style.use('seaborn-v0_8-darkgrid')
+    grid_exp = interpolar_em_grid(exp['serie'], t_grid)
 
-# 5.1 HRR (igual)
-plt.figure(figsize=(10,5))
-plt.plot(t_grid, HRR_exp_i, 'k-', label='Experimental (Babrauskas)')
-plt.xlabel('Tempo (s)'); plt.ylabel('HRR (kW)')
-plt.title('HRR – Teste 1')
-plt.legend(); plt.grid(); plt.tight_layout()
-plt.savefig('validacao_hrr.png', dpi=300); plt.close()
+    print("\n=== MÉTRICAS vs EXPERIMENTAL ===\n")
+    for chave, unidade in [('T_up_C', '°C'),
+                            ('Z_int_m', 'm'),
+                            ('O2_vol',  'fração vol.'),
+                            ('CO2_vol', 'fração vol.')]:
+        tabela = []
+        ref = grid_exp.get(chave)
+        if ref is None:
+            continue
+        for s in dados['modelos'] + dados['cfast']:
+            y = interpolar_em_grid(s['serie'], t_grid).get(chave)
+            if y is None:
+                continue
+            m = metricas(y, ref, f"{s['label']} — {chave} [{unidade}]")
+            if m:
+                tabela.append(m)
+        if tabela:
+            imprimir_metricas(tabela)
 
-# 5.2 Temperatura – adiciona McCaffrey em verde
-plt.figure(figsize=(10,5))
-plt.plot(t_grid, Tup_cfast_i, 'ko', markersize=2, label='CFAST')
-plt.plot(t_grid, Tup_exp_i, 'm.', markersize=1, label='Experimental')
-plt.plot(t_hes, Tup_hes, 'r-', lw=1.5, label='Heskestad')
-plt.plot(t_zuk, Tup_zuk, 'b-', lw=1.5, label='Zukoski')
-plt.plot(t_mcc, Tup_mcc, 'g-', lw=1.5, label='McCaffrey')
-plt.xlabel('Tempo (s)'); plt.ylabel('Temperatura (°C)')
-plt.title('Temperatura da Camada Superior')
-plt.legend(); plt.grid(); plt.tight_layout()
-plt.savefig('validacao_temperatura.png', dpi=300); plt.close()
 
-# 5.3 Interface – McCaffrey em verde
-plt.figure(figsize=(10,5))
-plt.plot(t_grid, Z_cfast_i, 'ko', markersize=2, label='CFAST')
-plt.plot(t_grid, Z_exp_i, 'm.', markersize=1, label='Experimental')
-plt.plot(t_hes, z_hes, 'r-', lw=1.5, label='Heskestad')
-plt.plot(t_zuk, z_zuk, 'b-', lw=1.5, label='Zukoski')
-plt.plot(t_mcc, z_mcc, 'g-', lw=1.5, label='McCaffrey')
-plt.xlabel('Tempo (s)'); plt.ylabel('Altura da interface (m)')
-plt.title('Altura da Interface')
-plt.legend(); plt.grid(); plt.tight_layout()
-plt.savefig('validacao_interface.png', dpi=300); plt.close()
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+def main():
+    parser = argparse.ArgumentParser(description="Validação do simulador")
+    parser.add_argument('--cenario', '-c', required=True,
+                        help='Nome do cenário (sem extensão) em ./cenarios/')
+    parser.add_argument('--t-max', type=float, default=None,
+                        help='Tempo máximo nos gráficos (default: t_final do cenário)')
+    parser.add_argument('--t-step', type=float, default=1.0,
+                        help='Passo do grid de interpolação [s]')
+    parser.add_argument('--saida', default=None,
+                        help='Nome do PNG de saída (default: validacao_<cenario>.png)')
+    args = parser.parse_args()
 
-# 5.4 O2 – McCaffrey em verde
-plt.figure(figsize=(10,5))
-plt.plot(t_grid, O2_cfast_i*100, 'ko', markersize=2, label='CFAST')
-plt.plot(t_grid, O2_exp_i*100, 'm.', markersize=1, label='Experimental')
-plt.plot(t_hes, o2_hes*100, 'r-', lw=1.5, label='Heskestad')
-plt.plot(t_zuk, o2_zuk*100, 'b-', lw=1.5, label='Zukoski')
-plt.plot(t_mcc, o2_mcc*100, 'g-', lw=1.5, label='McCaffrey')
-plt.xlabel('Tempo (s)'); plt.ylabel('O₂ (%)')
-plt.title('Fração volumétrica de Oxigênio')
-plt.legend(); plt.grid(); plt.tight_layout()
-plt.savefig('validacao_o2.png', dpi=300); plt.close()
+    try:
+        caminho = localizar_cenario(args.cenario)
+        cfg = carregar_cenario(caminho)
+    except ErroCenario as e:
+        print(f"[ERRO] {e}", file=sys.stderr)
+        sys.exit(1)
 
-# 5.5 CO2 – McCaffrey em verde
-plt.figure(figsize=(10,5))
-plt.plot(t_grid, CO2_cfast_i*100, 'ko', markersize=2, label='CFAST')
-plt.plot(t_grid, CO2_exp_i*100, 'm.', markersize=1, label='Experimental')
-plt.plot(t_hes, co2_hes*100, 'r-', lw=1.5, label='Heskestad')
-plt.plot(t_zuk, co2_zuk*100, 'b-', lw=1.5, label='Zukoski')
-plt.plot(t_mcc, co2_mcc*100, 'g-', lw=1.5, label='McCaffrey')
-plt.xlabel('Tempo (s)'); plt.ylabel('CO₂ (%)')
-plt.title('Fração volumétrica de Dióxido de Carbono')
-plt.legend(); plt.grid(); plt.tight_layout()
-plt.savefig('validacao_co2.png', dpi=300); plt.close()
+    t_final = cfg['simulacao']['t_final']
+    t_max = args.t_max if args.t_max is not None else t_final
+    t_grid = np.arange(0.0, t_max + args.t_step, args.t_step)
 
-# 5.6 Painel completo com todas as plumas
-fig, axs = plt.subplots(5, 1, figsize=(10, 15), sharex=True)
+    print(f"Cenário: {cfg['nome']}")
+    print(f"  Referência: {cfg.get('referencia', '—')}")
+    print(f"  t_final (YAML): {t_final} s   |   t_max (plot): {t_max} s")
 
-# HRR
-axs[0].plot(t_grid, HRR_exp_i, 'k-', label='Experimental')
-axs[0].set_ylabel('HRR (kW)')
-axs[0].legend()
-axs[0].grid()
+    dados = carregar_series(cfg)
 
-# Temperatura 
-axs[1].plot(t_grid, Tup_cfast_i, 'ko', markersize=1, label='CFAST')
-axs[1].plot(t_grid, Tup_exp_i, 'm.', markersize=1, label='Experimental')
-axs[1].plot(t_hes, Tup_hes, 'r-', lw=1, label='Heskestad')
-axs[1].plot(t_zuk, Tup_zuk, 'b-', lw=1, label='Zukoski')
-axs[1].plot(t_mcc, Tup_mcc, 'g-', lw=1, label='McCaffrey')
-axs[1].set_ylabel('T (°C)')
-axs[1].legend()
-axs[1].grid()
+    n_exp = 1 if dados['experimental'] else 0
+    print(f"  Fontes: experimental={n_exp}, CFAST={len(dados['cfast'])}, "
+          f"modelos={len(dados['modelos'])}")
 
-# Interface 
-axs[2].plot(t_grid, Z_cfast_i, 'ko', markersize=1, label='CFAST')
-axs[2].plot(t_grid, Z_exp_i, 'm.', markersize=1, label='Experimental')
-axs[2].plot(t_hes, z_hes, 'r-', lw=1, label='Heskestad')
-axs[2].plot(t_zuk, z_zuk, 'b-', lw=1, label='Zukoski')
-axs[2].plot(t_mcc, z_mcc, 'g-', lw=1, label='McCaffrey')
-axs[2].set_ylabel('Z_int (m)')
-axs[2].legend()
-axs[2].grid()
+    saida = args.saida or f"validacao_{cfg['nome']}.png"
+    plotar_painel(cfg, dados, t_grid, t_max, saida)
+    comparar(dados, t_grid)
 
-# O2 
-axs[3].plot(t_grid, O2_cfast_i*100, 'ko', markersize=1, label='CFAST')
-axs[3].plot(t_grid, O2_exp_i*100, 'm.', markersize=1, label='Experimental')
-axs[3].plot(t_hes, o2_hes_vol*100, 'r-', lw=1, label='Heskestad')
-axs[3].plot(t_zuk, o2_zuk_vol*100, 'b-', lw=1, label='Zukoski')
-axs[3].plot(t_mcc, o2_mcc_vol*100, 'g-', lw=1, label='McCaffrey')
-axs[3].set_ylabel('O₂ (%)')
-axs[3].legend()
-axs[3].grid()
 
-# CO2 
-axs[4].plot(t_grid, CO2_cfast_i*100, 'ko', markersize=1, label='CFAST')
-axs[4].plot(t_grid, CO2_exp_i*100, 'm.', markersize=1, label='Experimental')
-axs[4].plot(t_hes, co2_hes_vol*100, 'r-', lw=1, label='Heskestad')
-axs[4].plot(t_zuk, co2_zuk_vol*100, 'b-', lw=1, label='Zukoski')
-axs[4].plot(t_mcc, co2_mcc_vol*100, 'g-', lw=1, label='McCaffrey')
-axs[4].set_xlabel('Tempo (s)')
-axs[4].set_ylabel('CO₂ (%)')
-axs[4].legend()
-axs[4].grid()
-
-fig.suptitle('Validação do Modelo – Teste 1 de Babrauskas (1984)', fontweight='bold')
-fig.tight_layout()
-plt.savefig('validacao_todas.png', dpi=300)
-plt.close()
-
-print("\nTodos os gráficos salvos como PNG.")
-print("Validação concluída!")
+if __name__ == "__main__":
+    main()

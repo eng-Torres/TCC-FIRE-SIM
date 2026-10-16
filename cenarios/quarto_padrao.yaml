@@ -1,0 +1,51 @@
+# Cenário hipotético de TCC — quarto 4×4×2,8 m com ignição sequencial.
+# Ordem esperada de ignição: cama → tapete → cadeira → guarda-roupa.
+# (depende das temperaturas de ignição declaradas).
+
+nome: quarto_padrao
+descricao: >
+  Quarto 4×4×2,8 m com ignição sequencial de mobiliário.
+  Cama de espuma de PU inicia; os demais objetos ignizam quando a
+  temperatura da camada superior cruza seus respectivos T_ign.
+referencia: "Cenário hipotético — TCC"
+
+sala:
+  comprimento_x: 4.0
+  profundidade_y: 4.0
+  altura_z: 2.8
+  material_parede: "gesso_16mm"
+
+aberturas:
+  - nome: Porta Principal
+    posicao: {x: 1.6, y: 0.0, z: 0.0}
+    dimensoes: {x: 0.8, y: 0.0, z: 2.1}
+
+objetos:
+  - nome: Cama de Casal
+    nome_material: "espuma_poliuretano"
+    area: 2.8
+    is_initial: true
+
+  - nome: Tapete de Papelao
+    nome_material: "papelao"
+    area: 2.0
+    is_initial: false
+    T_ign: 373.15        # 100 °C — ignição de papelão
+
+  - nome: Guarda-Roupa
+    nome_material: "madeira"
+    area: 0.9
+    is_initial: false
+    T_ign: 573.15        # 300 °C — ignição de madeira
+
+simulacao:
+  t_final: 600
+  modelo_pluma: "mccaffrey"
+  max_step: 0.1
+  pontos_por_segundo: 10
+  n_nos_parede: 5
+  dt_print: 10.0
+
+saida:
+  modo: "csv"
+  nome_ficheiro: "resultados_quarto_padrao_mccaffrey.csv"

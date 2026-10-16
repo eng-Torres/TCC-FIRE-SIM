@@ -1,0 +1,78 @@
+# Teste 1 de Babrauskas (1984)
+# Referência: Babrauskas, V. (1984). Upholstered furniture room fires —
+#            measurements, comparison with furniture calorimeter data, and
+#            flashover predictions. J. Fire Sci. 2(1), pp. 5-19.
+# Sala: 2.26 × 3.94 × 2.31 m; janela 2.0 × 1.13 m; soffit 0.31 m; A√h = 2.43 m²·⁵.
+
+nome: teste1_Babrauskas
+descricao: >
+  Teste 1 de Babrauskas (1984) — loveseat F31 (40 kg) de espuma de poliuretano
+  com estrutura de madeira e revestimento de poliefina.
+  Curva de HRR medida no cone calorimétrico é imposta como forçante.
+referencia: "Babrauskas, J. Fire Sci. 2(1), 5-19, 1984"
+
+sala:
+  comprimento_x: 2.26
+  profundidade_y: 3.94
+  altura_z: 2.31
+  # 16 mm Type X gypsum wallboard — Babrauskas (1984), "Experimental Arrangements"
+  material_parede: "gesso_16mm"
+
+aberturas:
+  # Única abertura do Teste 1 (Tab. 1): janela 2.0 × 1.13 m
+  # Soffit depth = 0.31 m  →  topo da janela em 2.00 m  →  base em 0.87 m
+  - nome: Janela
+    posicao: {x: 0.13, y: 0.0, z: 0.87}     # (2.26 - 2.0) / 2  ;  2.31 - 0.31 - 1.13
+    dimensoes: {x: 2.0, y: 0.0, z: 1.13}    # Tab. 1, Test 1
+
+objetos:
+  - nome_material: "teste1_hrr_medida"      # material customizado com curva HRR
+    area: 1.2                                # 1.5 × 0.8 m — footprint do loveseat F31
+    is_initial: true
+    # T_ign não se aplica ao objeto inicial
+
+simulacao:
+  t_final: 2070           # duração do ensaio completo (último ponto do 1Room1.xlsx)
+  modelo_pluma: "mccaffrey"   # heskestad | zukoski | mccaffrey
+  max_step: 0.1           # passo máximo do Radau [s]
+  pontos_por_segundo: 10
+  n_nos_parede: 5         # nós da parede (condução 1D)
+  dt_print: 10.0          # intervalo de exportação CSV [s]
+
+saida:
+  modo: "csv"             # csv | plot | ambos
+  nome_ficheiro: "resultados_teste1_Babrauskas_mccaffrey.csv"
+
+validacao:
+  experimental:
+    arquivo: "1Room1.csv"       # relativo a ./cenarios/
+    formato: "babrauskas_1984"
+    label:   "Experimental (Babrauskas 1984)"
+    cor:     "magenta"
+
+  # O 1Room1.csv do NIST traz um bloco CFAST embutido (últimas 6 colunas)
+  usar_cfast_embutido: true
+
+  # Fontes CFAST externas (opcional)
+  cfast:
+    - arquivo: "Simple_compartments.csv"
+      formato: "cfast_simple_compartments"
+      label:   "CFAST — Simple Compartments"
+      cor:     "black"
+
+    # - arquivo: "Simple_zone.csv"
+    #   formato: "cfast_simple_zone"
+    #   label:   "CFAST — Simple Zone"
+    #   cor:     "dimgray"
+
+  # Saídas do próprio simulador (geradas com --pluma)
+  modelos:
+    - arquivo: "resultados_teste1_Babrauskas_heskestad.csv"
+      label:   "Heskestad"
+      cor:     "red"
+    - arquivo: "resultados_teste1_Babrauskas_zukoski.csv"
+      label:   "Zukoski"
+      cor:     "blue"
+    - arquivo: "resultados_teste1_Babrauskas_mccaffrey.csv"
+      label:   "McCaffrey"
+      cor:     "green"

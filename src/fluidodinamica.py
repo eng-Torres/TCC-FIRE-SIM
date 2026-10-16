@@ -15,6 +15,7 @@ def calcular_fluxo_porta_duas_zonas(
     densidade_fumaca: float,
     C_d: float = 0.68,
     m_dot_combustivel: float = 0.0,
+    z_base_porta: float=0.0,
 ) -> dict:
     if densidade_fumaca >= densidade_ar:
         return {"z_n": altura_porta / 2.0, "m_dot_in": 0.0, "m_dot_out": 0.0}
@@ -22,7 +23,7 @@ def calcular_fluxo_porta_duas_zonas(
     g = 9.81
     W = largura
     H = altura_porta
-    z_i = max(0.0, min(H, altura_interface))
+    z_i = max(0.0, min(H, altura_interface-z_base_porta))
     drho = densidade_ar - densidade_fumaca
 
     # Constantes auxiliares

@@ -6,49 +6,25 @@ Baseado no SFPE Handbook (Cap. 36) e CFAST (NIST SP 1026/1030).
 Inclui correlação da pluma (Zukoski, McCaffrey ou Heskestad),
 modelo de parede com condução transiente (N nós),
 suporte a múltiplos objetos com ignição sequencial.
-
-Referências:
-[1] Jones et al., NIST SP 1030 (2004) — CFAST Technical Reference Guide.
-[2] Hurley et al., SFPE Handbook of Fire Protection Engineering, 5th ed. (2016).
-[3] McGrattan et al., FDS User's Guide (2013) — Flame Extinction.
-[4] SciPy Documentation — solve_ivp, Radau, events.
-[5] Heskestad, Fire Safety Journal (1983) — Plume entrainment.
-[6] McCaffrey, NBSIR 79-1910 (1979) — Plume correlations.
-[7] Zukoski et al., Fire Safety Journal (1981) — Entrainment.
-
-# A limitação por O2 usa a função tanh suave do CFAST 6/7
-# (NIST SP 1030, Eq. 47), com Y_LOL calibrado para o cenário
-# de validação (Babrauskas, 1984). Ver Seção 3.X.3.7.
 """
 
 import numpy as np
 from scipy.integrate import solve_ivp
+
 from src.fluidodinamica import calcular_fluxo_porta_duas_zonas
 from src.combustao import calcular_hrr_total_e_propriedades
 from src.constantes import *
 from src.banco_construcao import MATERIAIS_CONSTRUCAO
 from src.termica_parede import criar_parede, derivadas_parede
 
-# ============================================================
-# Parâmetros de simulação (ajustáveis)
-# ============================================================
-MATERIAL_PAREDE_FALLBACK = 'gesso_16mm'   
-MAX_STEP = 0.1
-PONTOS_POR_SEGUNDO = 10
-N_NOS = 5
+# Material de parede usado quando o cenário não especifica
+MATERIAL_PAREDE_FALLBACK = 'gesso_16mm'
 
-if N_NOS < 2:
-    raise ValueError(
-        f"N_NOS deve ser >= 2 para discretização por diferenças finitas. "
-        f"Recebido: {N_NOS}. Para modelo de capacitância concentrada, "
-        f"implemente um caso especial em termica_parede.py."
-    )
-
+# Sanity check de RHO_AMB vs P_ATM/(R_AR*T_AMB)
 RHO_AMB_CALC = P_ATM / (R_AR * T_AMB)
 if abs(RHO_AMB - RHO_AMB_CALC) / RHO_AMB_CALC > 1e-3:
     print(f"[AVISO] RHO_AMB ({RHO_AMB:.4f}) difere de "
-      f"P_ATM/(R_AR*T_AMB) ({RHO_AMB_CALC:.4f}). "
-      f"Usando valor calculado.")
+          f"P_ATM/(R_AR*T_AMB) ({RHO_AMB_CALC:.4f}). Usando valor calculado.")
 RHO_AMB_LOCAL = RHO_AMB_CALC
 
 
@@ -57,37 +33,31 @@ def _obter_material_parede(sala):
     nome = sala.get('material_parede', MATERIAL_PAREDE_FALLBACK)
     if nome not in MATERIAIS_CONSTRUCAO:
         print(f"[AVISO] Material '{nome}' não encontrado. "
-      f"Usando fallback '{MATERIAL_PAREDE_FALLBACK}'.")
+              f"Usando fallback '{MATERIAL_PAREDE_FALLBACK}'.")
         nome = MATERIAL_PAREDE_FALLBACK
     return MATERIAIS_CONSTRUCAO[nome]
 
 
-props_parede = _obter_material_parede({})
-K_W = props_parede['k']
-RHO_W = props_parede['rho']
-CP_W = props_parede['cp']
-E_W = props_parede['espessura']
-H_CONV = props_parede['h_conv']
-epsilon = props_parede['emissividade']
-
-params_parede = criar_parede(
-    N_nos=N_NOS,
-    espessura_total=E_W,
-    k=K_W,
-    rho=RHO_W,
-    cp=CP_W,
-    h_conv_int=H_CONV,
-    emissividade=epsilon,
-    T_amb=T_AMB,
-    h_conv_ext=0.005
-)
+def _construir_params_parede(sala, n_nos):
+    """Cria o dicionário de parâmetros da parede para este cenário."""
+    props = _obter_material_parede(sala)
+    return criar_parede(
+        N_nos=n_nos,
+        espessura_total=props['espessura'],
+        k=props['k'],
+        rho=props['rho'],
+        cp=props['cp'],
+        h_conv_int=props['h_conv'],
+        emissividade=props['emissividade'],
+        T_amb=T_AMB,
+        h_conv_ext=0.005,
+    )
 
 
 # -----------------------------------------------------------
 # Correlações de pluma
 # -----------------------------------------------------------
 def _pluma_zukoski(Q_c, z):
-    """Zukoski et al. (1981) [7]."""
     if z <= 0.01 or Q_c <= 0.0:
         return 0.0
     return 0.071 * (Q_c ** (1.0 / 3.0)) * (z ** (5.0 / 3.0))
@@ -95,21 +65,14 @@ def _pluma_zukoski(Q_c, z):
 
 def _pluma_heskestad(Q_dot_total, Q_c, z, D,
                      T_inf=T_AMB, cp=C_P, rho_inf=RHO_AMB_LOCAL, g=9.81):
-    """
-    Heskestad plume entrainment — CFAST Eqs. (3.16)–(3.18) [1], [5].
-    """
+    """Heskestad plume entrainment — CFAST Eqs. (3.16)-(3.18)."""
     if z <= 0.01 or Q_c <= 0.0 or D <= 0.0:
         return 0.0
 
     Q_star = Q_dot_total / (rho_inf * cp * T_inf * np.sqrt(g * D) * D**2)
-
-    # Altura média da chama [1, Eq. 3.30]
-    L = D * (-1.02 + 3.7 * Q_star ** (2 / 5))
-    L = max(0.01, L)
-
-    # Origem virtual [1, Eq. 3.17]
+    L = max(0.01, D * (-1.02 + 3.7 * Q_star ** (2 / 5)))
     z0 = D * (-1.02 + 1.4 * Q_star ** (2 / 5))
-
+    z0 = max(z0, 0.0)   # origem virtual não pode estar abaixo do piso
     const = 0.196 * (g * rho_inf**2 / (cp * T_inf)) ** (1 / 3)
 
     if z < L:
@@ -125,15 +88,10 @@ def _pluma_heskestad(Q_dot_total, Q_c, z, D,
         m_e *= 1.0 + (2.9 * Q_c ** (2 / 3)) / (
             (np.sqrt(g) * cp * rho_inf * T_inf) ** (2 / 3) * z_eff ** (5 / 3)
         )
-
     return m_e
 
 
 def _pluma_mccaffrey(Q_c, z):
-    """
-    McCaffrey (1979) [6] — divide a pluma em três regimes:
-    chama contínua, intermitente e pluma pura.
-    """
     if z <= 0.01 or Q_c <= 0.0:
         return 0.0
     zeta = z / (Q_c ** 0.4)
@@ -148,46 +106,27 @@ def _pluma_mccaffrey(Q_c, z):
 # -----------------------------------------------------------
 # Sistema de EDOs
 # -----------------------------------------------------------
-def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, modelo_pluma='zukoski'):
+def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, modelo_pluma,
+                  n_nos, params_parede):
     """
-    Sistema de EDOs de conservação com múltiplos objetos.
-
-    Parâmetros
-    ----------
-    y : array
-        [m_u, H_u, m_o2, m_co2, m_co, T_w0, ..., T_w(N-1)]
-    modelo_pluma : str
-        'zukoski', 'heskestad' ou 'mccaffrey'.
-
-    Retorna
-    -------
-    list
-        Derivadas: [dm_dt, dH_dt, dm_o2_dt, dm_co2_dt, dm_co_dt] + dT_parede_dt
+    y = [m_u, H_u, m_o2, m_co2, m_co, T_w0, ..., T_w(N-1)]
     """
-    m_u = y[0]
+    m_u = max(y[0], 0.001)
     H_u = y[1]
-    m_o2 = y[2]
-    m_co2 = y[3]
-    m_co = y[4]
-    T_parede = y[5:5 + N_NOS]
+    m_o2 = max(y[2], 0.0)
+    m_co2 = max(y[3], 0.0)
+    m_co = max(y[4], 0.0)
+    T_parede = y[5:5 + n_nos]
 
-    m_u = max(m_u, 0.001)
-    m_o2 = max(m_o2, 0.0)
-    m_co2 = max(m_co2, 0.0)
-    m_co = max(m_co, 0.0)
-
-    T_u = H_u / (m_u * C_P)
-    T_u = max(200.0, min(T_u, 2000.0))
+    T_u = max(200.0, min(H_u / (m_u * C_P), 2000.0))
 
     V_u = (m_u * R_AR * T_u) / P_ATM
     area_sala = sala["area_piso"]
-    Z_int = sala["altura_z"] - (V_u / area_sala)
-    Z_int = max(Z_int, 0.0)
+    Z_int = max(sala["altura_z"] - (V_u / area_sala), 0.0)
 
     Q_dot, m_dot_fuel, _, nu_o2, y_co2, y_co, D_fogo = \
         calcular_hrr_total_e_propriedades(t, objetos_ativos)
 
-    # --- Escolha da pluma ---
     if modelo_pluma == 'zukoski':
         _calc_pluma = lambda Qc, z: _pluma_zukoski(Qc, z)
     elif modelo_pluma == 'mccaffrey':
@@ -199,16 +138,12 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, modelo_pluma='zukoski')
     m_dot_plume_total = _calc_pluma(Q_c, Z_int)
     m_dot_entrained = max(0.0, m_dot_plume_total - m_dot_fuel)
 
-    # --- Ventilação ---
     rho_u = P_ATM / (R_AR * T_u)
-    m_dot_in = 0.0
-    m_dot_out = 0.0
 
     def _calcular_ventilacao(m_dot_fuel_atual):
-        """Calcula vazões de entrada/saída com um dado m_dot_fuel."""
-        m_in = 0.0
-        m_out = 0.0
+        m_in, m_out = 0.0, 0.0
         for vent in aberturas:
+            z_base = vent.get("posicao", {}).get("z", 0.0)
             fluxo = calcular_fluxo_porta_duas_zonas(
                 largura=vent["dimensoes"]["x"],
                 altura_porta=vent["dimensoes"]["z"],
@@ -216,7 +151,8 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, modelo_pluma='zukoski')
                 densidade_ar=RHO_AMB_LOCAL,
                 densidade_fumaca=rho_u,
                 C_d=0.68,
-                m_dot_combustivel=m_dot_fuel_atual
+                m_dot_combustivel=m_dot_fuel_atual,
+                z_base_porta=z_base,
             )
             m_in += fluxo["m_dot_in"]
             m_out += fluxo["m_dot_out"]
@@ -224,38 +160,22 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, modelo_pluma='zukoski')
 
     m_dot_in, m_dot_out = _calcular_ventilacao(m_dot_fuel)
 
-    # --- Espécies ---
-    m_dot_o2_consumido = m_dot_fuel * nu_o2
-    m_dot_co2_produzido = m_dot_fuel * y_co2
-    m_dot_co_produzido = m_dot_fuel * y_co
-
-        # --- Limitação pelo O2 (Modelo CFAST 6/7 — tanh suave) ---
-    # Referência: Jones et al., NIST SP 1030, Eq. (47) [1].
-    #   C_LOL = (tanh(800*(Y_O2 - Y_LOL) - 4) + 1) / 2
-    # Y_LOL é a fração mássica de O2 no Lower Oxygen Limit (LOL).
-    # Default CFAST: 10% em volume ≈ 0.10 em massa.
-    # A função varia de 0 (extinção) a 1 (queima completa) em ~0.01 de Y_O2.
-    Y_O2_LOL = 0.01  # Fração mássica (CFAST default, Morehart et al.)
+    # Limitação por O2 (CFAST 6/7, tanh suave)
+    Y_O2_LOL = 0.01
     Y_O2_atual = m_o2 / m_u if m_u > 0 else 0.0
-
-    # Fator de limitação suave (CFAST Eq. 47)
     C_LOL = 0.5 * (np.tanh(800.0 * (Y_O2_atual - Y_O2_LOL) - 4.0) + 1.0)
 
-    # Aplicar o fator à taxa de queima
     m_dot_fuel *= C_LOL
     Q_dot *= C_LOL
     Q_c = 0.7 * Q_dot
 
-    # Recalcular pluma e espécies com a HRR limitada
     m_dot_plume_total = _calc_pluma(Q_c, Z_int)
     m_dot_entrained = max(0.0, m_dot_plume_total - m_dot_fuel)
     m_dot_o2_consumido = m_dot_fuel * nu_o2
     m_dot_co2_produzido = m_dot_fuel * y_co2
     m_dot_co_produzido = m_dot_fuel * y_co
 
-    # Recalcular ventilação com m_dot_fuel atualizado
     m_dot_in, m_dot_out = _calcular_ventilacao(m_dot_fuel)
-
 
     dm_o2_dt = (m_dot_entrained * Y_O2_AMB
                 - m_dot_o2_consumido
@@ -272,17 +192,20 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, modelo_pluma='zukoski')
 
     dm_dt = m_dot_plume_total - m_dot_out
 
-    # --- Perda de calor ---
-    L = sala["comprimento_x"]
-    W = sala["profundidade_y"]
+    # Perda de calor (usa params_parede para h_conv e emissividade)
+    L_sala = sala["comprimento_x"]
+    W_sala = sala["profundidade_y"]
     H_sala = sala["altura_z"]
-    A_teto = L * W
-    A_paredes_sup = 2 * (L + W) * (H_sala - Z_int)
-    A_contato = A_teto + A_paredes_sup  
+    A_teto = L_sala * W_sala
+    A_paredes_sup = 2 * (L_sala + W_sala) * (H_sala - Z_int)
+    A_contato = A_teto + A_paredes_sup
 
     T_w0 = T_parede[0]
-    Q_rad = epsilon * SIGMA * A_contato * (T_u ** 4 - T_w0 ** 4)
-    Q_conv = H_CONV * A_contato * (T_u - T_w0)
+    h_conv_int = params_parede['h_conv_int']
+    eps = params_parede['emissividade']
+
+    Q_rad  = eps * SIGMA * A_contato * (T_u ** 4 - T_w0 ** 4)
+    Q_conv = h_conv_int * A_contato * (T_u - T_w0)
     Q_loss = Q_conv + Q_rad
 
     dH_dt = (Q_c
@@ -299,37 +222,31 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, modelo_pluma='zukoski')
 # Integração de segmentos
 # -----------------------------------------------------------
 def _integrar_segmento(t_ini, y_ini, t_fim, sala, aberturas,
-                       objetos_ativos, modelo_pluma, evento_fn=None):
-    """
-    Integra um segmento temporal usando solve_ivp com Radau.
-
-    Retorna
-    -------
-    sol : OdeResult
-        Objeto do solve_ivp. Use sol.t[-1] para obter o tempo final real.
-        Verifique sol.status == 2 para detectar falha.
-    """
+                       objetos_ativos, modelo_pluma,
+                       n_nos, params_parede,
+                       max_step, pontos_por_segundo,
+                       evento_fn=None):
     t_span = (t_ini, t_fim)
-    num_points = max(10, int((t_fim - t_ini) * PONTOS_POR_SEGUNDO))
+    num_points = max(10, int((t_fim - t_ini) * pontos_por_segundo))
     t_eval = np.linspace(t_ini, t_fim, num_points)
 
     sol = solve_ivp(
         equacoes_sfpe,
         t_span,
         y_ini,
-        args=(sala, aberturas, objetos_ativos, modelo_pluma),
+        args=(sala, aberturas, objetos_ativos, modelo_pluma,
+              n_nos, params_parede),
         events=evento_fn,
         method='Radau',
-        max_step=MAX_STEP,
+        max_step=max_step,
         t_eval=t_eval,
         rtol=1e-6,
-        atol=1e-20
+        atol=1e-9,
     )
-
     if sol.status == 2:
         raise RuntimeError(
-        f"solve_ivp falhou em [{t_ini:.2f}, {t_fim:.2f}]: {sol.message}"
-    )
+            f"solve_ivp falhou em [{t_ini:.2f}, {t_fim:.2f}]: {sol.message}"
+        )
     return sol
 
 
@@ -340,19 +257,22 @@ def simular_incendio_sequencial(sala, aberturas,
                                 objeto_inicial, outros_objetos,
                                 objetos_geometria,
                                 t_final=600,
-                                modelo_pluma='zukoski'):
+                                modelo_pluma='zukoski',
+                                max_step=0.1,
+                                pontos_por_segundo=10,
+                                n_nos=5):
     """
     Simulação completa com ignição sequencial.
 
     Retorna
     -------
-    t_total : ndarray
-        Vetor de tempos.
-    y_total : ndarray
-        Matriz de estados (n_vars × n_tempos).
-    objetos_ativos : list
-        Lista final de objetos queimando, com t_ign preenchido.
+    t_total, y_total, objetos_ativos
     """
+    if n_nos < 2:
+        raise ValueError(f"n_nos deve ser >= 2. Recebido: {n_nos}")
+
+    # Reconstrói params_parede para este cenário (material + n_nos)
+    params_parede_local = _construir_params_parede(sala, n_nos)
 
     area_por_material = {obj['nome_material']: obj['area']
                          for obj in objetos_geometria}
@@ -371,7 +291,7 @@ def simular_incendio_sequencial(sala, aberturas,
             'nome_material': nome,
             't_ign': None,
             'T_ign': mat['T_ign'],
-            'area': area
+            'area': area,
         })
 
     # Condições iniciais
@@ -384,11 +304,10 @@ def simular_incendio_sequencial(sala, aberturas,
     m_co2_0 = m_u_0 * Y_CO2_AMB
     m_co_0 = m_u_0 * Y_CO_AMB
 
-    T_parede0 = np.full(N_NOS, T_AMB)
-
+    T_parede0 = np.full(n_nos, T_AMB)
     y0 = np.concatenate([
         np.array([m_u_0, H_u_0, m_o2_0, m_co2_0, m_co_0]),
-        T_parede0
+        T_parede0,
     ])
 
     t_atual = 0.0
@@ -397,37 +316,27 @@ def simular_incendio_sequencial(sala, aberturas,
 
     TOL_IGN = 0.5
 
-    def _verificar_ignicoes_imediatas(t, y, objetos_inativos, objetos_ativos):
-        """
-        Ativa objetos cuja T_ign já foi ultrapassada.
-        Usa TOL_IGN para robustez numérica.
-        Retorna o número de objetos ativados.
-        """
+    def _verificar_ignicoes_imediatas(t, y, inativos, ativos):
         m_u_loc = max(y[0], 0.001)
         T_u_loc = y[1] / (m_u_loc * C_P)
-        ignitados = [o for o in objetos_inativos
+        ignitados = [o for o in inativos
                      if T_u_loc >= o['T_ign'] - TOL_IGN]
         for obj in ignitados:
-            objetos_inativos.remove(obj)
+            inativos.remove(obj)
             obj['t_ign'] = t
-            objetos_ativos.append(obj)
+            ativos.append(obj)
             print(f"Ignição imediata de {obj['nome_material']} em t = {t:.2f} s")
         return len(ignitados)
 
-    
     _verificar_ignicoes_imediatas(t_atual, y_atual,
                                   objetos_inativos, objetos_ativos)
 
-    
     while t_atual < t_final and len(objetos_inativos) > 0:
         T_IGN_ATUAL = min(obj['T_ign'] for obj in objetos_inativos)
 
-        
-        def evento_ignicao(t, y):
-            """Evento de ignição: T_u cruza T_IGN_ATUAL."""
+        def evento_ignicao(t, y, *args):
             m_u_loc = max(y[0], 0.001)
-            H_u_loc = y[1]
-            T_u_loc = H_u_loc / (m_u_loc * C_P)
+            T_u_loc = y[1] / (m_u_loc * C_P)
             return T_u_loc - T_IGN_ATUAL
 
         evento_ignicao.terminal = True
@@ -436,7 +345,9 @@ def simular_incendio_sequencial(sala, aberturas,
         sol = _integrar_segmento(
             t_atual, y_atual, t_final,
             sala, aberturas, objetos_ativos, modelo_pluma,
-            evento_fn=evento_ignicao
+            n_nos, params_parede_local,
+            max_step, pontos_por_segundo,
+            evento_fn=evento_ignicao,
         )
         solucoes.append(sol)
         t_atual = sol.t[-1]
@@ -451,18 +362,18 @@ def simular_incendio_sequencial(sala, aberturas,
             _verificar_ignicoes_imediatas(t_atual, y_atual,
                                           objetos_inativos, objetos_ativos)
         else:
-            #Sem evento: sai do loop.
             break
 
     if t_atual < t_final:
         sol_rest = _integrar_segmento(
             t_atual, y_atual, t_final,
-            sala, aberturas, objetos_ativos, modelo_pluma
+            sala, aberturas, objetos_ativos, modelo_pluma,
+            n_nos, params_parede_local,
+            max_step, pontos_por_segundo,
         )
         solucoes.append(sol_rest)
         t_atual = sol_rest.t[-1]
 
-    # Concatenação segura
     t_hist = [np.array([0.0])]
     y_hist = [y0.reshape(-1, 1)]
     for sol_i in solucoes:

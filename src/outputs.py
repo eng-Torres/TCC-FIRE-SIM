@@ -64,6 +64,7 @@ def _calcular_fluxos(t, y, sala, aberturas, objetos_ativos,
         m_in_tot = 0.0
         m_out_tot = 0.0
         for vent in aberturas:
+            z_base = vent.get("posicao", {}).get("z", 0.0)
             fluxo = calcular_fluxo_porta_duas_zonas(
                 largura=vent["dimensoes"]["x"],
                 altura_porta=vent["dimensoes"]["z"],
@@ -71,7 +72,8 @@ def _calcular_fluxos(t, y, sala, aberturas, objetos_ativos,
                 densidade_ar=RHO_AMB,
                 densidade_fumaca=rho_u,
                 C_d=C_d,
-                m_dot_combustivel=m_dot_fuel
+                m_dot_combustivel=m_dot_fuel,
+                z_base_porta=z_base,
             )
             m_in_tot += fluxo["m_dot_in"]
             m_out_tot += fluxo["m_dot_out"]

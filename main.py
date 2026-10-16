@@ -1,90 +1,177 @@
 """
-Script principal para simulação e visualização do modelo de duas zonas.
+Script principal do simulador de incêndio (modelo de duas zonas).
+
+Uso:
+    python main.py --listar
+    python main.py --listar-materiais
+    python main.py --cenario teste1_Babrauskas
+    python main.py --cenario quarto_padrao --pluma heskestad
+    python main.py --cenario teste1_Babrauskas --t-final 1200 --saida ambos
+
+Cenários ficam em ./cenarios/*.yaml (ou .json) e podem ser versionados no Git.
 """
-from src.geometria import carregar_geometria_padrao, carregar_geometria_teste1_Babrauskas
+import argparse
+import sys
+
+from src.io_cenario import (
+    carregar_cenario, listar_cenarios, listar_materiais,
+    localizar_cenario, registrar_materiais_customizados,
+    CENARIOS_DIR, ErroCenario,
+)
 from src.edos_solver import simular_incendio_sequencial
 from src.constantes import C_P, R_AR, P_ATM
 from src.outputs import plotar_graficos, exportar_dados
 
-CENARIO = "teste1_Babrauskas"   # opções: "teste1_Babrauskas", "quarto_padrao"
-MODO_SAIDA = 'csv' # plot , csv
+
+def _montar_objetos_para_solver(objetos_json):
+    """
+    Converte a lista unificada de objetos do cenário para a interface
+    esperada por simular_incendio_sequencial.
+    """
+    objeto_inicial = None
+    outros = []
+    geometria = []
+
+    for obj in objetos_json:
+        geometria.append({
+            "nome_material": obj["nome_material"],
+            "area": obj["area"],
+        })
+        if obj["is_initial"]:
+            objeto_inicial = {"nome_material": obj["nome_material"]}
+        else:
+            outros.append({
+                "nome_material": obj["nome_material"],
+                "T_ign": obj["T_ign"],
+            })
+
+    return objeto_inicial, outros, geometria
 
 
-def configurar_cenario(nome: str):
-    if nome == "teste1_Babrauskas":
-        sala, _, aberturas = carregar_geometria_teste1_Babrauskas()
-        objeto_inicial = {"nome_material": "teste1_hrr_medida"}
-        outros_materiais = []
-        # Área real do loveseat F31 = 1.5 × 0.8 = 1.2 m²
-        objetos_geometria = [{"nome_material": "teste1_hrr_medida", "area": 1.2}]
-        titulo = "Teste 1 – Babrauskas (1984)"
-        t_final = 2070
+def rodar(cfg, args):
+    sim = cfg["simulacao"]
 
-    elif nome == "quarto_padrao":
-        sala, objetos, aberturas = carregar_geometria_padrao()
-        cama = next(obj for obj in objetos if obj["nome"] == "Cama de Casal")
-        guarda_roupa = next(obj for obj in objetos if obj["nome"] == "Guarda-Roupa")
-        tapete_de_papelao = next(obj for obj in objetos if obj["nome"] == "Tapete de Papelao")
-        cadeira = next(obj for obj in objetos if obj["nome"] == "cadeira")
-        
-        objeto_inicial = {"nome_material": cama["tipo_material"]}
-        outros_materiais = [
-            {"nome_material": guarda_roupa["tipo_material"], "T_ign": guarda_roupa["T_ign"]},
-            {"nome_material": tapete_de_papelao["tipo_material"], "T_ign": tapete_de_papelao["T_ign"]},
-            {"nome_material": cadeira["tipo_material"], "T_ign": cadeira["T_ign"]}
-        ]
-        objetos_geometria = [
-            {"nome_material": cama["tipo_material"], "area": 2.8},
-            {"nome_material": guarda_roupa["tipo_material"], "area": 0.9},
-            {"nome_material": tapete_de_papelao["tipo_material"], "area": 2.0},
-            {"nome_material": cadeira["tipo_material"], "area": 0.25}
-        ]
-        titulo = "Incêndio no Quarto Padrão – Ignição Sequencial"
-        t_final = 600
-    else:
-        raise ValueError(f"Cenário '{nome}' não reconhecido.")
+    # Overrides via CLI
+    if args.pluma:
+        sim["modelo_pluma"] = args.pluma
+    if args.t_final is not None:
+        sim["t_final"] = args.t_final
+    if args.saida:
+        cfg["saida"]["modo"] = args.saida
+    if args.nome_saida:
+        cfg["saida"]["nome_ficheiro"] = args.nome_saida
 
-    return {
-        'sala': sala,
-        'aberturas': aberturas,
-        'objeto_inicial': objeto_inicial,
-        'outros_materiais': outros_materiais,
-        'objetos_geometria': objetos_geometria,
-        'titulo': titulo,
-        't_final': t_final
-    }
+    print(f"Cenário: {cfg['nome']}")
+    if cfg["descricao"]:
+        print(f"  Descrição: {cfg['descricao'].strip()}")
+    if cfg["referencia"]:
+        print(f"  Referência: {cfg['referencia'].strip()}")
+    print(f"  Pluma: {sim['modelo_pluma']}  |  t_final: {sim['t_final']} s")
+    print(f"  N_NOS={sim['n_nos_parede']}  MAX_STEP={sim['max_step']}  "
+          f"PPS={sim['pontos_por_segundo']}")
+    print(f"  Material da parede: {cfg['sala']['material_parede']}")
+    print("Iniciando simulação...")
 
-
-def rodar_teste():
-    modelo_pluma = 'mccaffrey' # zukoski , heskestad , mccaffrey
-
-    cfg = configurar_cenario(CENARIO)
-    print(f"Cenário: {CENARIO}  |  Pluma: {modelo_pluma}")
-    print(f"Iniciando simulação de {cfg['t_final']} segundos. Aguarde...")
+    objeto_inicial, outros, geometria = _montar_objetos_para_solver(cfg["objetos"])
 
     t, y, objetos_ativos = simular_incendio_sequencial(
-        cfg['sala'], cfg['aberturas'],
-        objeto_inicial=cfg['objeto_inicial'],
-        outros_objetos=cfg['outros_materiais'],
-        objetos_geometria=cfg['objetos_geometria'],
-        t_final=cfg['t_final'],
-        modelo_pluma=modelo_pluma,
+        cfg["sala"],
+        cfg["aberturas"],
+        objeto_inicial=objeto_inicial,
+        outros_objetos=outros,
+        objetos_geometria=geometria,
+        t_final=sim["t_final"],
+        modelo_pluma=sim["modelo_pluma"],
+        max_step=sim["max_step"],
+        pontos_por_segundo=sim["pontos_por_segundo"],
+        n_nos=sim["n_nos_parede"],
     )
 
     print("Simulação concluída! Processando resultados...")
 
-    if MODO_SAIDA == 'plot':
-        plotar_graficos(t, y, cfg['sala'], cfg['aberturas'],
-                        C_P, R_AR, P_ATM, titulo=cfg['titulo'])
-    elif MODO_SAIDA == 'csv':
-        nome_ficheiro = f"resultados_{CENARIO}_{modelo_pluma}.csv"
-        exportar_dados(t, y, objetos_ativos, cfg['sala'], cfg['aberturas'],
+    modo = cfg["saida"]["modo"]
+    titulo = f"{cfg['nome']} — pluma {sim['modelo_pluma']}"
+
+    if modo in ("plot", "ambos"):
+        plotar_graficos(t, y, cfg["sala"], cfg["aberturas"],
+                        C_P, R_AR, P_ATM, titulo=titulo)
+
+    if modo in ("csv", "ambos"):
+        exportar_dados(t, y, objetos_ativos, cfg["sala"], cfg["aberturas"],
                        C_P, R_AR, P_ATM,
-                       nome_ficheiro=nome_ficheiro, dt_print=10.0,
-                       titulo=cfg['titulo'])
-    else:
-        print("Modo de saída desconhecido. Use 'plot' ou 'csv'.")
+                       nome_ficheiro=cfg["saida"]["nome_ficheiro"],
+                       dt_print=sim["dt_print"],
+                       titulo=titulo)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Simulador de incêndio — modelo de duas zonas"
+    )
+    parser.add_argument(
+        "--cenario", "-c",
+        help="Nome do cenário (arquivo em ./cenarios/ sem extensão)"
+    )
+    parser.add_argument(
+        "--listar", action="store_true",
+        help="Lista cenários disponíveis e sai"
+    )
+    parser.add_argument(
+        "--listar-materiais", action="store_true", dest="listar_materiais",
+        help="Lista materiais embutidos (banco) e sai"
+    )
+    parser.add_argument(
+        "--pluma", choices=["heskestad", "zukoski", "mccaffrey"],
+        help="Override do modelo de pluma"
+    )
+    parser.add_argument(
+        "--t-final", type=float, dest="t_final",
+        help="Override do tempo final [s]"
+    )
+    parser.add_argument(
+        "--saida", choices=["csv", "plot", "ambos"],
+        help="Override do modo de saída"
+    )
+    parser.add_argument(
+        "--nome-saida", dest="nome_saida",
+        help="Override do nome do arquivo CSV"
+    )
+
+    args = parser.parse_args()
+
+    if args.listar:
+        cenarios = listar_cenarios()
+        if not cenarios:
+            print(f"Nenhum cenário encontrado em {CENARIOS_DIR}")
+        else:
+            print("Cenários disponíveis:")
+            for c in cenarios:
+                print(f"  - {c}")
+        sys.exit(0)
+
+    if args.listar_materiais:
+        m = listar_materiais()
+        print("Materiais combustíveis (banco embutido):")
+        for n in m["combustiveis"]:
+            print(f"  - {n}")
+        print("Materiais de construção (banco embutido):")
+        for n in m["construcao"]:
+            print(f"  - {n}")
+        sys.exit(0)
+
+    if not args.cenario:
+        parser.error("--cenario é obrigatório (ou use --listar)")
+
+    try:
+        caminho = localizar_cenario(args.cenario)
+        cfg = carregar_cenario(caminho)
+    except ErroCenario as e:
+        print(f"[ERRO] {e}", file=sys.stderr)
+        sys.exit(1)
+
+    registrar_materiais_customizados(cfg)
+    rodar(cfg, args)
 
 
 if __name__ == "__main__":
-    rodar_teste()
+    main()
