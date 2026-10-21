@@ -84,7 +84,7 @@ def carregar_geometria_teste1_Babrauskas():
     aberturas = [
         {
             "nome": "Janela",
-            "posicao": {"x": 0.13, "y": 0.0, "z": 0.0},   
+            "posicao": {"x": 0.13, "y": 0.0, "z": 0.87},   
             "dimensoes": {"x": 2.0, "y": 0.0, "z": 1.13}  
         }
     ]

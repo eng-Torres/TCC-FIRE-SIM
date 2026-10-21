@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # rodar_plumas.sh
-for pluma in heskestad zukoski mccaffrey; do
+for pluma in mccaffrey heskestad zukoski; do
     echo "=== Rodando $pluma ==="
     python main.py --cenario teste_babrauskas --pluma "$pluma"  --nome-saida cenarios/resultados_teste1_Babrauskas_"$pluma".csv
 done

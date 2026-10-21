@@ -158,8 +158,6 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, modelo_pluma,
             m_out += fluxo["m_dot_out"]
         return m_in, m_out
 
-    m_dot_in, m_dot_out = _calcular_ventilacao(m_dot_fuel)
-
     # Limitação por O2 (CFAST 6/7, tanh suave)
     Y_O2_LOL = 0.01
     Y_O2_atual = m_o2 / m_u if m_u > 0 else 0.0
@@ -243,7 +241,7 @@ def _integrar_segmento(t_ini, y_ini, t_fim, sala, aberturas,
         rtol=1e-6,
         atol=1e-9,
     )
-    if sol.status == 2:
+    if sol.status < 0:
         raise RuntimeError(
             f"solve_ivp falhou em [{t_ini:.2f}, {t_fim:.2f}]: {sol.message}"
         )
