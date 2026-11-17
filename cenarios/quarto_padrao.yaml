@@ -1,21 +1,42 @@
-# Cenário hipotético de TCC — quarto 4×4×2,8 m com ignição sequencial.
-# Ordem esperada de ignição: cama → tapete → cadeira → guarda-roupa.
-# (depende das temperaturas de ignição declaradas).
+# Cenário de TCC — Dormitório residencial (4,0 × 4,0 × 2,8 m) com ignição
+# sequencial de múltiplos objetos em regime pré-flashover (limitado pelo combustível).
+#
+# Referências fundamentais dos parâmetros adotados:
+# 1. SFPE Handbook of Fire Protection Engineering, 5th Ed. (Hurley et al., 2016):
+#    - Cap. 20 (V. Babrauskas, "Ignition of Solids"): temperaturas de ignição pilotada
+#      de materiais celulósicos/papelão (~250 °C) e madeira (~300–365 °C).
+#    - Cap. 26 (V. Babrauskas, "Heat Release Rates") e Cap. 36: taxas de crescimento
+#      t² da NFPA (Fast: α = 0,0469 kW/s²; Medium: α = 0,01172 kW/s²).
+#    - Apêndice 3, Tabela A.39 (A. Tewarson): calores de combustão efetivos (ΔHc)
+#      e rendimentos mássicos de espécies (y_CO2, y_CO) em queima bem ventilada.
+# 2. Babrauskas, V. (2003). Ignition Handbook. Fire Science Publishers.
+# 3. Lawson, J. R., Walton, W. D., Twilley, W. H. (1983). Fire Performance of
+#    Furnishings as Measured in the NBS Furniture Calorimeter, Part I. NBSIR 83-2787,
+#    National Bureau of Standards (NIST).
+# 4. Huggett, C. (1980). Estimation of rate of heat release by means of oxygen
+#    consumption measurements. Fire and Materials, 4(2), 61–65. (ΔHc / ν_O2 = 13,1 MJ/kg_O2).
+# 5. NIST Special Publication 1026 / 1041 — CFAST Technical Reference & Users Guide.
 
 nome: quarto_padrao
 descricao: >
-  Quarto 4×4×2,8 m com ignição sequencial de mobiliário.
-  Cama de espuma de PU inicia; os demais objetos ignizam quando a
-  temperatura da camada superior cruza seus respectivos T_ign.
-referencia: "Cenário hipotético — TCC"
+  Dormitório residencial (4,0 × 4,0 × 2,8 m) com porta aberta (0,8 × 2,1 m) e
+  ignição sequencial de três itens de mobiliário: (1) Cama de Casal (colchão de
+  espuma flexível de poliuretano com roupa de cama, ignição inicial em t = 0 s),
+  (2) Caixas de Papelão Ondulado (T_ign = 250 °C / 523,15 K) e (3) Guarda-Roupa
+  de Madeira (T_ign = 300 °C / 573,15 K). O cenário atinge a queima simultânea
+  dos três objetos mantendo-se em regime pré-flashover (T_u,máx < 500 °C).
+referencia: "SFPE Handbook (5th Ed., Caps. 20, 26, Tab. A.39); NBSIR 83-2787 (NIST); Huggett (1980)"
 
 sala:
   comprimento_x: 4.0
   profundidade_y: 4.0
   altura_z: 2.8
+  # Placa de gesso acartonado Tipo X (16 mm) — padrão CFAST / Babrauskas (1984)
   material_parede: "gesso_16mm"
 
 aberturas:
+  # Porta interna residencial padrão (0,80 × 2,10 m, fator de abertura A√H = 2,435 m^2,5)
+  # Limiar de flashover de Babrauskas (750·A√H) ≈ 1826 kW; Thomas ≈ 1506 kW.
   - nome: Porta Principal
     posicao: {x: 1.6, y: 0.0, z: 0.0}
     dimensoes: {x: 0.8, y: 0.0, z: 2.1}
@@ -23,20 +44,58 @@ aberturas:
 objetos:
   - nome: Cama de Casal
     nome_material: "espuma_poliuretano"
-    area: 2.8
+    area: 2.8            # 1,40 m × 2,00 m (colchão de casal padrão, D_ef = 1,89 m)
     is_initial: true
 
-  - nome: Tapete de Papelao
+  - nome: Caixas de Papelao
     nome_material: "papelao"
-    area: 2.0
+    area: 0.6            # 1,00 m × 0,60 m (pilha de caixas organizadoras, D_ef = 0,87 m)
     is_initial: false
-    T_ign: 373.15        # 100 °C — ignição de papelão
+    T_ign: 523.15        # 250 °C — ignição pilotada de papelão/celulose porosa (Babrauskas, 2003; SFPE Cap. 20)
 
   - nome: Guarda-Roupa
     nome_material: "madeira"
-    area: 0.9
+    area: 0.9            # 1,50 m × 0,60 m (projeção horizontal do guarda-roupa, D_ef = 1,07 m)
     is_initial: false
-    T_ign: 573.15        # 300 °C — ignição de madeira
+    T_ign: 573.15        # 300 °C — ignição pilotada de madeira sob fluxo crítico (SFPE Cap. 20; Drysdale, 2011)
+
+materiais_combustiveis:
+  # 1. Colchão de espuma de poliuretano flexível + roupa de cama
+  #    Crescimento t² Rápido (Fast, α = 0,0469 kW/s², NFPA 92B / SFPE Cap. 26) até
+  #    675,4 kW em 120 s, platô até 240 s e decaimento até 600 s (E_tot ≈ 185 MJ, ~9,25 kg).
+  #    Estequiometria: Tewarson (SFPE Tab. A.39, PU flexible foam GM21-GM27) e Huggett (1980).
+  espuma_poliuretano:
+    tempo: [0, 30, 60, 90, 120, 240, 300, 360, 420, 480, 540, 600]
+    hrr:   [0.0, 42.2, 168.8, 379.9, 675.4, 675.4, 480.0, 320.0, 180.0, 80.0, 25.0, 0.0]
+    delta_Hc: 20000.0    # kJ/kg (20,0 MJ/kg — Tewarson Tab. A.39 / CFAST)
+    nu_o2: 1.53          # kg O2/kg comb (ΔHc / 13100 — Huggett, 1980)
+    y_co2: 1.55          # kg CO2/kg comb (Tewarson Tab. A.39: 1,51–1,57 g/g)
+    y_co: 0.020          # kg CO/kg comb  (Tewarson Tab. A.39: 0,010–0,031 g/g)
+
+  # 2. Caixas de papelão ondulado com papéis/celulose
+  #    Crescimento t² Rápido (Fast, α = 0,0469 kW/s²) até 280 kW em 77 s, platô
+  #    até 120 s e decaimento até 300 s (E_tot ≈ 42 MJ, ~3,0 kg de papelão seco).
+  #    Estequiometria: Tewarson (SFPE Tab. A.39, Corrugated cardboard / Cellulose).
+  papelao:
+    tempo: [0, 20, 40, 60, 77, 120, 165, 210, 255, 300]
+    hrr:   [0.0, 18.8, 75.0, 168.8, 280.0, 280.0, 190.0, 110.0, 45.0, 0.0]
+    delta_Hc: 14000.0    # kJ/kg (14,0 MJ/kg — Tewarson Tab. A.39: 13,2–14,2 MJ/kg)
+    nu_o2: 1.07          # kg O2/kg comb (ΔHc / 13100 — Huggett, 1980)
+    y_co2: 1.29          # kg CO2/kg comb (Tewarson Tab. A.39; respeita limite de 44,4% C da celulose)
+    y_co: 0.010          # kg CO/kg comb
+
+  # 3. Guarda-roupa de madeira / compensado
+  #    Crescimento t² Médio (Medium, α = 0,01172 kW/s², NFPA 92B / SFPE Cap. 26 para
+  #    mobiliário de madeira sem estofamento) até 300 kW em 160 s, platô até 240 s
+  #    e decaimento linear até 0 kW em 540 s (E_tot ≈ 84 MJ, ~5,25 kg de madeira).
+  #    Estequiometria: Tewarson (SFPE Tab. A.39, Wood) e Huggett (1980).
+  madeira:
+    tempo: [0, 30, 60, 90, 120, 160, 240, 300, 360, 420, 480, 540, 600]
+    hrr:   [0.0, 10.5, 42.2, 94.9, 168.8, 300.0, 300.0, 225.0, 150.0, 80.0, 30.0, 0.0, 0.0]
+    delta_Hc: 16000.0    # kJ/kg (16,0 MJ/kg — madeira seca, SFPE / CFAST)
+    nu_o2: 1.22          # kg O2/kg comb (ΔHc / 13100 — Huggett, 1980)
+    y_co2: 1.30          # kg CO2/kg comb (Tewarson Tab. A.39: 1,27–1,33 g/g)
+    y_co: 0.005          # kg CO/kg comb  (Tewarson Tab. A.39: 0,004–0,005 g/g)
 
 simulacao:
   t_final: 600

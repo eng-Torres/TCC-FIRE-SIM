@@ -1,0 +1,69 @@
+# Configuração de validação: Simulador Python vs. Experimental NIST (1Room1.csv — Babrauskas 1984)
+# Uso:
+#   python valid_cfast.py --config config_validacao_babrauskas.yaml
+
+cenario: teste_babrauskas
+altura_sala: 2.31
+titulo: "Validação Experimental — Teste 1 de Babrauskas (1984) vs. Simulador (Três Plumas)"
+caminho_cfast: "1Room1.csv"
+caminho_simulador: "resultados/resultados_teste1_Babrauskas_heskestad.csv"
+
+# Parâmetros de leitura para formato antigo do NIST (1Room1.csv):
+# pd.read_csv(..., skiprows=2, header=None), coluna de tempo no índice 86
+cfast_skiprows: 2
+cfast_header_none: true
+cfast_time_col: 86
+cfast_label: "Experimental (Babrauskas 1984)"
+
+modelos_simulador:
+  - arquivo: "resultados/resultados_teste1_Babrauskas_heskestad.csv"
+    label: "Heskestad"
+    cor: "crimson"
+  - arquivo: "resultados/resultados_teste1_Babrauskas_zukoski.csv"
+    label: "Zukoski"
+    cor: "royalblue"
+  - arquivo: "resultados/resultados_teste1_Babrauskas_mccaffrey.csv"
+    label: "McCaffrey"
+    cor: "forestgreen"
+
+tempo_max: 1200
+dt_grid: 10.0
+saida_png: "fig_babrauskas_valid_cfast.png"
+saida_metricas_csv: "metricas_babrauskas_valid_cfast.csv"
+
+variaveis:
+  temperatura_superior:
+    titulo: "Temperatura da Camada Superior (TEMPUP — col 83)"
+    cfast_file: "1Room1.csv"
+    cfast_col: 83             # Índice 83 (TEMPUP em K -> convertido automaticamente para °C via -273.15)
+    sim_col: "T_u"            # Mapeado automaticamente para T_u(C)
+    ylabel: "Temperatura [°C]"
+
+  altura_interface:
+    titulo: "Altura da Interface de Fumaça (INTRFACE — col 10)"
+    cfast_file: "1Room1.csv"
+    cfast_col: 10             # Índice 10 (INTRFACE [m])
+    sim_col: "Z_int"          # Mapeado automaticamente para Z_int(m)
+    ylabel: "Altura [m]"
+
+  oxigenio:
+    titulo: "Fração Volumétrica de Oxigênio (O2 — col 21)"
+    cfast_file: "1Room1.csv"
+    cfast_col: 21             # Índice 21 (dividido por 100 automaticamente se estiver em %)
+    sim_col: "O2_vol"         # Calculado automaticamente de Y_O2 * (M_ar / M_O2)
+    ylabel: "Fração Vol. O₂ [mol/mol]"
+
+  dioxido_carbono:
+    titulo: "Fração Volumétrica de Dióxido de Carbono (CO2 — col 2)"
+    cfast_file: "1Room1.csv"
+    cfast_col: 2              # Índice 2 (dividido por 100 automaticamente se estiver em %)
+    sim_col: "CO2_vol"        # Calculado automaticamente de Y_CO2 * (M_ar / M_CO2)
+    ylabel: "Fração Vol. CO₂ [mol/mol]"
+
+  hrr:
+    titulo: "Taxa de Liberação de Calor Experimental (HRR — col 8)"
+    cfast_file: "1Room1.csv"
+    cfast_col: 8              # Índice 8 (HRR em W -> convertido para kW via cfast_scale: 0.001)
+    cfast_scale: 0.001
+    sim_col: ""               # Curva de entrada imposta (referência experimental)
+    ylabel: "HRR [kW]"

@@ -5,9 +5,11 @@ Compatível com o modelo de parede de N nós (índice 5 = superfície).
 """
 import numpy as np
 import matplotlib.pyplot as plt
-from src.fluidodinamica import calcular_fluxo_porta_duas_zonas
+from src.fluidodinamica import calcular_fluxos_compartimento
 from src.combustao import calcular_hrr_total_e_propriedades
-from src.constantes import RHO_AMB, Y_O2_AMB, Y_CO2_AMB, Y_CO_AMB, T_AMB
+from src.banco_construcao import MATERIAIS_CONSTRUCAO
+from src.termica_parede import calcular_perda_calor_superior
+from src.constantes import RHO_AMB, Y_O2_AMB, Y_CO2_AMB, Y_CO_AMB, T_AMB, SIGMA
 
 
 def _calcular_campos(t, y, sala, C_P, R_AR, P_ATM):
@@ -46,12 +48,25 @@ def _calcular_fluxos(t, y, sala, aberturas, objetos_ativos,
     m_dot_in_arr = np.zeros(n)
     m_dot_out_arr = np.zeros(n)
 
+    rho_amb_local = P_ATM / (R_AR * T_AMB)
+    nome_mat_parede = sala.get("material_parede", "gesso_16mm")
+    props_parede = MATERIAIS_CONSTRUCAO.get(
+        nome_mat_parede, MATERIAIS_CONSTRUCAO["gesso_16mm"]
+    )
+    geo_aberturas = [{
+        "largura": vent["dimensoes"]["x"],
+        "altura": vent["dimensoes"]["z"],
+        "z_base": vent.get("posicao", {}).get("z", 0.0),
+    } for vent in aberturas]
+
     for i in range(n):
         m_u = y[0, i] if y.ndim == 2 else y[0]
         H_u = y[1, i] if y.ndim == 2 else y[1]
+        m_o2 = y[2, i] if y.ndim == 2 else y[2]
+        T_w0 = y[5, i] if y.ndim == 2 else y[5]
         m_u = max(m_u, 0.001)
-        T_u = H_u / (m_u * C_P)
-        T_u = max(T_u, 200.0)
+        m_o2 = max(m_o2, 0.0)
+        T_u = max(200.0, min(H_u / (m_u * C_P), 2000.0))
         V_u = (m_u * R_AR * T_u) / P_ATM
         Z_int = sala["altura_z"] - V_u / sala["area_piso"]
         Z_int = max(Z_int, 0.0)
@@ -61,25 +76,37 @@ def _calcular_fluxos(t, y, sala, aberturas, objetos_ativos,
         Q_dot, m_dot_fuel, _, _, _, _, _ = \
             calcular_hrr_total_e_propriedades(t[i], objetos_ativos)
 
-        m_in_tot = 0.0
-        m_out_tot = 0.0
-        for vent in aberturas:
-            z_base = vent.get("posicao", {}).get("z", 0.0)
-            fluxo = calcular_fluxo_porta_duas_zonas(
-                largura=vent["dimensoes"]["x"],
-                altura_porta=vent["dimensoes"]["z"],
-                altura_interface=Z_int,
-                densidade_ar=RHO_AMB,
-                densidade_fumaca=rho_u,
-                C_d=C_d,
-                m_dot_combustivel=m_dot_fuel,
-                z_base_porta=z_base,
-            )
-            m_in_tot += fluxo["m_dot_in"]
-            m_out_tot += fluxo["m_dot_out"]
+        # Limitação por O2 idêntica à integrada pelo solver (C_LOL)
+        Y_O2_LOL = 0.01
+        Y_O2_atual = m_o2 / m_u if m_u > 0 else 0.0
+        C_LOL = 0.5 * (np.tanh(800.0 * (Y_O2_atual - Y_O2_LOL) - 4.0) + 1.0)
+        m_dot_fuel *= C_LOL
+        Q_c = 0.7 * Q_dot * C_LOL
 
-        m_dot_in_arr[i] = m_in_tot
-        m_dot_out_arr[i] = m_out_tot
+        Q_loss, _ = calcular_perda_calor_superior(
+            sala,
+            Z_int,
+            T_u,
+            T_w0,
+            props_parede["h_conv"],
+            props_parede["emissividade"],
+            sigma=SIGMA,
+        )
+        m_dot_exp_termica = (Q_c - Q_loss) / (C_P * T_AMB)
+
+        fluxo = calcular_fluxos_compartimento(
+            geo_aberturas,
+            altura_interface=Z_int,
+            densidade_ar=rho_amb_local,
+            densidade_fumaca=rho_u,
+            C_d=C_d,
+            m_dot_combustivel=m_dot_fuel,
+            m_dot_expansao=m_dot_exp_termica,
+            razao_T_out=T_u / T_AMB,
+        )
+
+        m_dot_in_arr[i] = fluxo["m_dot_in"]
+        m_dot_out_arr[i] = fluxo["m_dot_out"]
 
     return m_dot_in_arr, m_dot_out_arr
 

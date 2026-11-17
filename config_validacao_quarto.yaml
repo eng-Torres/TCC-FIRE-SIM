@@ -1,0 +1,61 @@
+# Configuração de validação: Simulador Python vs. CFAST (NIST) — Cenário Quarto Padrão
+# Uso:
+#   python valid_cfast.py --config config_validacao.yaml
+
+cenario: quarto_padrao
+altura_sala: 2.80
+titulo: "Validação Numérica — Cenário Quarto Padrão (Três Plumas vs. CFAST 7.7)"
+caminho_cfast: "cfast tests/quarto_padrao/quarto_padrao"
+caminho_simulador: "resultados/resultados_quarto_padrao_heskestad.csv"
+
+modelos_simulador:
+  - arquivo: "resultados/resultados_quarto_padrao_heskestad.csv"
+    label: "Heskestad"
+    cor: "crimson"
+  - arquivo: "resultados/resultados_quarto_padrao_zukoski.csv"
+    label: "Zukoski"
+    cor: "royalblue"
+  - arquivo: "resultados/resultados_quarto_padrao_mccaffrey.csv"
+    label: "McCaffrey"
+    cor: "forestgreen"
+
+tempo_max: 600
+dt_grid: 1.0
+saida_png: "fig_quarto_padrao_cfast.png"
+saida_metricas_csv: "metricas_quarto_padrao_cfast.csv"
+
+variaveis:
+  temperatura_superior:
+    titulo: "Temperatura da Camada Superior (T_u)"
+    cfast_file: "quarto_padrao_compartments.csv"
+    cfast_col: "ULT_1"        # Temperatura da camada superior [°C]
+    sim_col: "T_u"            # Mapeado automaticamente para T_u(C)
+    ylabel: "Temperatura [°C]"
+
+  altura_interface:
+    titulo: "Altura da Interface de Fumaça (Z_int)"
+    cfast_file: "quarto_padrao_compartments.csv"
+    cfast_col: "HGT_1"        # Altura da interface [m]
+    sim_col: "Z_int"          # Mapeado automaticamente para Z_int(m)
+    ylabel: "Altura [m]"
+
+  oxigenio:
+    titulo: "Fração Volumétrica de Oxigênio (O₂)"
+    cfast_file: "quarto_padrao_compartments.csv"
+    cfast_col: "ULO2_1"       # CFAST exporta em mol % -> convertido para fração (÷ 100)
+    sim_col: "O2_vol"         # Calculado automaticamente de Y_O2 * (M_ar / M_O2)
+    ylabel: "Fração Vol. O₂ [mol/mol]"
+
+  dioxido_carbono:
+    titulo: "Fração Volumétrica de Dióxido de Carbono (CO₂)"
+    cfast_file: "quarto_padrao_compartments.csv"
+    cfast_col: "ULCO2_1"      # CFAST exporta em mol % -> convertido para fração (÷ 100)
+    sim_col: "CO2_vol"        # Calculado automaticamente de Y_CO2 * (M_ar / M_CO2)
+    ylabel: "Fração Vol. CO₂ [mol/mol]"
+
+  temperatura_teto:
+    titulo: "Temperatura Superficial da Parede / Teto (T_w)"
+    cfast_file: "quarto_padrao_walls.csv"
+    cfast_col: "CEILT_1"      # Temperatura do teto/parede superior no CFAST [°C]
+    sim_col: "T_teto"         # Mapeado automaticamente para T_w(C) (nó 0 da parede)
+    ylabel: "Temperatura Teto [°C]"

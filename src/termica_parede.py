@@ -76,3 +76,28 @@ def derivadas_parede(T_u, T_parede, params):
     dT_dt[N-1] = (q_cond - q_out) / cap_surf
 
     return dT_dt
+
+
+def calcular_perda_calor_superior(
+    sala: dict,
+    Z_int: float,
+    T_u: float,
+    T_w0: float,
+    h_conv_int: float,
+    emissividade: float,
+    sigma: float = 5.67e-11,
+) -> tuple[float, float]:
+    """
+    Calcula (Q_loss, A_contato) entre a camada gasosa superior e o conjunto
+    teto + paredes superiores banhadas pela fumaça [kW, m²].
+    """
+    L_sala = sala["comprimento_x"]
+    W_sala = sala["profundidade_y"]
+    H_sala = sala["altura_z"]
+    A_teto = L_sala * W_sala
+    A_paredes_sup = 2.0 * (L_sala + W_sala) * max(H_sala - Z_int, 0.0)
+    A_contato = max(A_teto + A_paredes_sup, 1e-6)
+
+    Q_rad = emissividade * sigma * A_contato * (T_u ** 4 - T_w0 ** 4)
+    Q_conv = h_conv_int * A_contato * (T_u - T_w0)
+    return Q_conv + Q_rad, A_contato

@@ -11,11 +11,11 @@ suporte a múltiplos objetos com ignição sequencial.
 import numpy as np
 from scipy.integrate import solve_ivp
 
-from src.fluidodinamica import calcular_fluxo_porta_duas_zonas
+from src.fluidodinamica import calcular_fluxos_compartimento
 from src.combustao import calcular_hrr_total_e_propriedades
 from src.constantes import *
 from src.banco_construcao import MATERIAIS_CONSTRUCAO
-from src.termica_parede import criar_parede, derivadas_parede
+from src.termica_parede import criar_parede, derivadas_parede, calcular_perda_calor_superior
 
 # Material de parede usado quando o cenário não especifica
 MATERIAL_PAREDE_FALLBACK = 'gesso_16mm'
@@ -58,7 +58,7 @@ def _construir_params_parede(sala, n_nos):
 # Correlações de pluma
 # -----------------------------------------------------------
 def _pluma_zukoski(Q_c, z):
-    if z <= 0.01 or Q_c <= 0.0:
+    if z <= 0.0 or Q_c <= 0.0:
         return 0.0
     return 0.071 * (Q_c ** (1.0 / 3.0)) * (z ** (5.0 / 3.0))
 
@@ -66,13 +66,14 @@ def _pluma_zukoski(Q_c, z):
 def _pluma_heskestad(Q_dot_total, Q_c, z, D,
                      T_inf=T_AMB, cp=C_P, rho_inf=RHO_AMB_LOCAL, g=9.81):
     """Heskestad plume entrainment — CFAST Eqs. (3.16)-(3.18)."""
-    if z <= 0.01 or Q_c <= 0.0 or D <= 0.0:
+    if z <= 0.0 or Q_c <= 0.0 or D <= 0.0:
         return 0.0
 
     Q_star = Q_dot_total / (rho_inf * cp * T_inf * np.sqrt(g * D) * D**2)
     L = max(0.01, D * (-1.02 + 3.7 * Q_star ** (2 / 5)))
+    # Origem virtual de Heskestad (1984): pode ser negativa (abaixo da base do fogo)
+    # para fontes extensas / baixo Q* (Q* < 0.45), aumentando a distância efetiva (z - z0).
     z0 = D * (-1.02 + 1.4 * Q_star ** (2 / 5))
-    z0 = max(z0, 0.0)   # origem virtual não pode estar abaixo do piso
     const = 0.196 * (g * rho_inf**2 / (cp * T_inf)) ** (1 / 3)
 
     if z < L:
@@ -92,7 +93,7 @@ def _pluma_heskestad(Q_dot_total, Q_c, z, D,
 
 
 def _pluma_mccaffrey(Q_c, z):
-    if z <= 0.01 or Q_c <= 0.0:
+    if z <= 0.0 or Q_c <= 0.0:
         return 0.0
     zeta = z / (Q_c ** 0.4)
     if zeta < 0.08:
@@ -134,29 +135,33 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, modelo_pluma,
     else:
         _calc_pluma = lambda Qc, z: _pluma_heskestad(Q_dot, Qc, z, D_fogo)
 
-    Q_c = 0.7 * Q_dot
-    m_dot_plume_total = _calc_pluma(Q_c, Z_int)
-    m_dot_entrained = max(0.0, m_dot_plume_total - m_dot_fuel)
-
     rho_u = P_ATM / (R_AR * T_u)
 
-    def _calcular_ventilacao(m_dot_fuel_atual):
-        m_in, m_out = 0.0, 0.0
-        for vent in aberturas:
-            z_base = vent.get("posicao", {}).get("z", 0.0)
-            fluxo = calcular_fluxo_porta_duas_zonas(
-                largura=vent["dimensoes"]["x"],
-                altura_porta=vent["dimensoes"]["z"],
-                altura_interface=Z_int,
-                densidade_ar=RHO_AMB_LOCAL,
-                densidade_fumaca=rho_u,
-                C_d=0.68,
-                m_dot_combustivel=m_dot_fuel_atual,
-                z_base_porta=z_base,
-            )
-            m_in += fluxo["m_dot_in"]
-            m_out += fluxo["m_dot_out"]
-        return m_in, m_out
+    def _calcular_ventilacao(m_dot_fuel_atual, m_dot_exp_atual):
+        """
+        Retorna (m_in, m_in_sup, m_out):
+            m_in     : entrada total de ar ambiente [kg/s]
+            m_in_sup : parcela da entrada que ocorre ACIMA da interface [kg/s]
+            m_out    : saída de fumaça da camada superior [kg/s]
+        """
+        # Todas as aberturas do compartimento compartilham UM plano neutro;
+        # o combustível e a expansão térmica entram uma única vez no fechamento.
+        geo_aberturas = [{
+            "largura": vent["dimensoes"]["x"],
+            "altura": vent["dimensoes"]["z"],
+            "z_base": vent.get("posicao", {}).get("z", 0.0),
+        } for vent in aberturas]
+        fluxo = calcular_fluxos_compartimento(
+            geo_aberturas,
+            altura_interface=Z_int,
+            densidade_ar=RHO_AMB_LOCAL,
+            densidade_fumaca=rho_u,
+            C_d=0.68,
+            m_dot_combustivel=m_dot_fuel_atual,
+            m_dot_expansao=m_dot_exp_atual,
+            razao_T_out=T_u / T_AMB,
+        )
+        return fluxo["m_dot_in"], fluxo["m_dot_in_sup"], fluxo["m_dot_out"]
 
     # Limitação por O2 (CFAST 6/7, tanh suave)
     Y_O2_LOL = 0.01
@@ -166,52 +171,74 @@ def equacoes_sfpe(t, y, sala, aberturas, objetos_ativos, modelo_pluma,
     m_dot_fuel *= C_LOL
     Q_dot *= C_LOL
     Q_c = 0.7 * Q_dot
+    Q_r = 0.3 * Q_dot
 
     m_dot_plume_total = _calc_pluma(Q_c, Z_int)
+    # Arrastamento de ar ambiente pela pluma (nunca negativo). O combustível
+    # entra na camada SEMPRE, mesmo quando a pluma é curta (plume < fuel)
+    # ou quando a interface atinge o piso (pluma = 0).
     m_dot_entrained = max(0.0, m_dot_plume_total - m_dot_fuel)
     m_dot_o2_consumido = m_dot_fuel * nu_o2
     m_dot_co2_produzido = m_dot_fuel * y_co2
     m_dot_co_produzido = m_dot_fuel * y_co
 
-    m_dot_in, m_dot_out = _calcular_ventilacao(m_dot_fuel)
+    # Perda de calor (pré-calculada para acoplar expansão térmica no plano neutro)
+    T_w0 = T_parede[0]
+    Q_loss, A_contato = calcular_perda_calor_superior(
+        sala,
+        Z_int,
+        T_u,
+        T_w0,
+        params_parede['h_conv_int'],
+        params_parede['emissividade'],
+        sigma=SIGMA,
+    )
+    m_dot_exp_termica = (Q_c - Q_loss) / (C_P * T_AMB)
 
-    dm_o2_dt = (m_dot_entrained * Y_O2_AMB
+    m_dot_in, m_dot_in_sup, m_dot_out = _calcular_ventilacao(
+        m_dot_fuel, m_dot_exp_termica
+    )
+
+    # Ar ambiente que chega à camada superior: apenas o arrastado pela pluma.
+    # HIPÓTESE: o ar que entra pelas aberturas (m_dot_in, inclusive a parcela
+    # m_dot_in_sup que entra acima da interface) é mais denso que a fumaça,
+    # afunda e é depositado na camada inferior (como no CFAST). Como a camada
+    # inferior é implícita (reservatório a T_AMB, Y_O2_AMB), essa massa não
+    # entra nos balanços abaixo. Depositar m_dot_in_sup na camada superior
+    # cria uma realimentação positiva espúria (interface desce -> mais ar
+    # entra acima dela -> interface desce mais) que leva Z_int ao piso.
+    # O tratamento completo exige uma camada inferior explícita.
+    m_dot_ar_sup = m_dot_entrained
+
+    dm_o2_dt = (m_dot_ar_sup * Y_O2_AMB
                 - m_dot_o2_consumido
                 - m_dot_out * (m_o2 / m_u))
-    dm_co2_dt = (m_dot_entrained * Y_CO2_AMB
+    dm_co2_dt = (m_dot_ar_sup * Y_CO2_AMB
                  + m_dot_co2_produzido
                  - m_dot_out * (m_co2 / m_u))
-    dm_co_dt = (m_dot_entrained * Y_CO_AMB
+    dm_co_dt = (m_dot_ar_sup * Y_CO_AMB
                 + m_dot_co_produzido
                 - m_dot_out * (m_co / m_u))
 
     if m_o2 <= 0.0 and dm_o2_dt < 0.0:
         dm_o2_dt = 0.0
 
-    dm_dt = m_dot_plume_total - m_dot_out
+    # Balanço de massa com as MESMAS parcelas usadas nas espécies e na energia
+    dm_dt = m_dot_ar_sup + m_dot_fuel - m_dot_out
 
-    # Perda de calor (usa params_parede para h_conv e emissividade)
-    L_sala = sala["comprimento_x"]
-    W_sala = sala["profundidade_y"]
-    H_sala = sala["altura_z"]
-    A_teto = L_sala * W_sala
-    A_paredes_sup = 2 * (L_sala + W_sala) * (H_sala - Z_int)
-    A_contato = A_teto + A_paredes_sup
-
-    T_w0 = T_parede[0]
-    h_conv_int = params_parede['h_conv_int']
-    eps = params_parede['emissividade']
-
-    Q_rad  = eps * SIGMA * A_contato * (T_u ** 4 - T_w0 ** 4)
-    Q_conv = h_conv_int * A_contato * (T_u - T_w0)
-    Q_loss = Q_conv + Q_rad
-
+    # Toda massa que entra na camada traz sua entalpia (ar e combustível
+    # a T_AMB); a fumaça sai a T_u.
     dH_dt = (Q_c
-             + m_dot_entrained * C_P * T_AMB
+             + (m_dot_ar_sup + m_dot_fuel) * C_P * T_AMB
              - m_dot_out * C_P * T_u
              - Q_loss)
 
+    # A parcela radiativa da chama (Q_r = 0.3 * Q_dot) incide como fluxo
+    # adicional na superfície interna da parede (nó 0), conservando a energia
+    # total liberada na combustão (Q_c + Q_r = Q_dot).
+    q_rad_chama = Q_r / A_contato
     dT_parede_dt = derivadas_parede(T_u, T_parede, params_parede)
+    dT_parede_dt[0] += q_rad_chama / params_parede['cap_surf']
 
     return [dm_dt, dH_dt, dm_o2_dt, dm_co2_dt, dm_co_dt] + list(dT_parede_dt)
 
@@ -348,10 +375,14 @@ def simular_incendio_sequencial(sala, aberturas,
             evento_fn=evento_ignicao,
         )
         solucoes.append(sol)
-        t_atual = sol.t[-1]
-        y_atual = sol.y[:, -1]
 
         if sol.t_events[0].size > 0 and len(objetos_inativos) > 0:
+            t_atual = float(sol.t_events[0][0])
+            y_atual = sol.y_events[0][0].copy()
+            if sol.t.size == 0 or sol.t[-1] < t_atual:
+                sol.t = np.append(sol.t, t_atual)
+                sol.y = np.column_stack([sol.y, y_atual])
+
             obj_ignitado = min(objetos_inativos, key=lambda x: x['T_ign'])
             objetos_inativos.remove(obj_ignitado)
             obj_ignitado['t_ign'] = t_atual
@@ -360,6 +391,8 @@ def simular_incendio_sequencial(sala, aberturas,
             _verificar_ignicoes_imediatas(t_atual, y_atual,
                                           objetos_inativos, objetos_ativos)
         else:
+            t_atual = sol.t[-1]
+            y_atual = sol.y[:, -1]
             break
 
     if t_atual < t_final:
